@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "commit": "f658f3a (tree of first commit; file committed in amendment)",
+  "dirty": false,
+  "date": "2026-11-20T07:06:39+00:00",
+  "host": {
+    "machine": "x86_64",
+    "os": "Linux 5.10.134-013.15.kangaroo.al8.x86_64",
+    "python": "3.12.16",
+    "nproc": 2,
+    "cpu_model": "Intel(R) Xeon(R) Processor",
+    "mem_total_gib": 4.06,
+    "l3_mib_reported": 504,
+    "avx2": true,
+    "avx512": true,
+    "fma": true
+  },
+  "toolchain": {
+    "gcc": "14",
+    "nasm": "2.16.03"
+  },
+  "fma_peak_vs_accumulators_gflops": {
+    "1": 7.2,
+    "2": 14.4,
+    "3": 21.6,
+    "4": 28.8,
+    "5": 35.89,
+    "6": 42.69,
+    "7": 50.39,
+    "8": 57.61,
+    "9": 56.18,
+    "10": 57.61,
+    "11": 57.61,
+    "12": 57.61,
+    "13": 57.61,
+    "14": 57.61,
+    "15": 57.62,
+    "16": 57.62
+  },
+  "fma_peak_gflops": 57.62,
+  "fma_best_nacc": 15,
+  "load_l1_gbps": 56.12,
+  "bandwidth_ladder": {
+    "L1": {
+      "bytes": 32768,
+      "gbps_1t": 195.05
+    },
+    "L2": {
+      "bytes": 1048576,
+      "gbps_1t": 143.13
+    },
+    "L3": {
+      "bytes": 67108864,
+      "gbps_1t": 29.14
+    },
+    "DRAM": {
+      "bytes": 1610612736,
+      "gbps_1t": 18.89,
+      "gbps_allt": 37.6
+    }
+  },
+  "clock": {
+    "depadd_gops_s": 3.566,
+    "core_clock_est_ghz": 3.566,
+    "method": "dependent add chain, 1 op/cycle latency assumption"
+  },
+  "roofline": {
+    "p_star_1t_dram": 23.4,
+    "formula": "p* + 1 = 8 * peak_flops / dram_bw_1t",
+    "note": "crossover between DRAM-bandwidth-bound and FMA-bound for fused Gram pass (flops/byte = (p+1)/8)"
+  },
+  "constraints": {
+    "dram_working_set_bytes": 1610612736,
+    "note": "PLAN.md asks 8x L3; host RAM 4 GiB < 8x504 MiB, capped at 1.5 GiB (see ADR-0002)"
+  },
+  "notes": "Second characterization run (first: DRAM 16.23 GB/s 1t, p*=27.4). Run-to-run DRAM variance 16.2-18.9 GB/s and p* 23-27 on this shared KVM host; CV policy of asm-benchmarking section 2 applies to any claim derived from these numbers."
+}

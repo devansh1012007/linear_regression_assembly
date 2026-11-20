@@ -1,0 +1,19 @@
+name: verify
+on: [push, pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: toolchain
+        run: |
+          sudo apt-get update && sudo apt-get install -y nasm
+          python -m pip install numpy mpmath scipy
+      - name: lint + build + full verify (make verify == CI)
+        run: make verify
+      - name: upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results
+          path: results/
