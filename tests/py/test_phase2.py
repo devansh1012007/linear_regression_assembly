@@ -3,11 +3,10 @@
 Covers the new exports beyond the kernel differentials (test_gram.py) and
 the end-to-end fit (test_fit.py):
   1. NIST through ols_fit (Norris p=1, Pontius p=2 with x,x^2 design)
-  2. Expanded StRD: Longley/Wampler1-3 with measured gates, Filip refusal
-  3. ABI probe on every Phase-2 export (subprocess-isolated)
-  4. Guard-page memory safety for gram/chol/residual/pivot_means (C harness)
-  5. Struct-layout drift check: ctypes structs vs asm's ols_abi_offsets
-  6. Cross-ISA dispatch: sse2 vs avx2 gram agree within bounds
+  2. ABI probe on every Phase-2 export (integer-arg adapters where needed)
+  3. Guard-page memory safety for gram/chol/residual/pivot_means (C harness)
+  4. Struct-layout drift check: ctypes structs vs asm's ols_abi_offsets
+  5. OLS_FORCE_ISA-style dispatch: sse2 vs avx2 gram agree within bounds
 """
 import ctypes as C
 import sys
@@ -21,6 +20,7 @@ import ols_bind as B
 import ols_ref as R
 import test_gram as TG
 import test_fit as TF
+import test_qr as TQ
 
 ols = B.ols
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -42,7 +42,8 @@ def test_nist_via_fit():
     lres = [R.lre(g, c) for g, c in zip(b, d.certified_b)]
     check(out["rc"] == 0 and min(lres) >= 10,
           f"Norris via ols_fit: rc={out['rc']} LRE={lres}")
-    check(R.lre(out["sigma2"] ** 0.5, d.residual_sd) >= 8,
+    check(R.lre(out["sse"] / (d.n - 2) ** 0.5 if False else out["sigma2"] ** 0.5,
+                d.residual_sd) >= 8,
           f"Norris resid_sd LRE={R.lre(out['sigma2'] ** 0.5, d.residual_sd):.1f}")
     # Pontius: quadratic via 2-column design [x, x^2]
     d = R.parse_nist(ROOT / "data" / "nist" / "Pontius.dat")
@@ -162,6 +163,7 @@ def test_abi_probe_new_exports():
         ("ols_chol_solve_f64_sse2", X.ctypes.data, 3, y.ctypes.data, 0),
         ("ols_pivot_means_f64_sse2", X.ctypes.data, X.strides[0], y.ctypes.data, 16),
         ("ols_workspace_size", 16, 3, 1, 1),
+        ("ols_abi_offsets", 0, 0, 0, 0),
     ]
     for name, a1, a2, a3, a4 in cases:
         addr = dl.dlsym(ols._handle, name.encode())
@@ -201,9 +203,12 @@ def test_guard_phase2():
 
 
 def test_struct_drift():
-    # ctypes layouts must match the frozen asm offsets (PRB_/RES_ in abi.inc)
+    # ctypes layouts must match the frozen asm offsets (PRB_/RES_ in abi.inc).
+    # Literal checks pin absolute values; the ols_abi_offsets hash check
+    # below compares asm truth (abi.inc constants) vs this mirror (ADR-0006).
     check(C.sizeof(TF.Problem) == 88, f"Problem size {C.sizeof(TF.Problem)}")
-    check(C.sizeof(TF.Result) == 96, f"Result size {C.sizeof(TF.Result)} (v2: t field)")
+    check(C.sizeof(TF.Result) == 104,
+          f"Result size {C.sizeof(TF.Result)} (v3: f_stat)")
     for fld, off in (("X", 8), ("y", 16), ("w", 24), ("n", 32), ("p", 40),
                      ("ldx", 48), ("method", 56), ("flags", 60),
                      ("lambda_", 64), ("rcond", 72), ("threads", 80)):
@@ -212,10 +217,139 @@ def test_struct_drift():
     for fld, off in (("beta", 0), ("intercept", 8), ("sse", 16), ("sst", 24),
                      ("r2", 32), ("r2_adj", 40), ("sigma2", 48),
                      ("cond_est", 56), ("se", 64), ("rank", 72),
-                     ("method_used", 76), ("isa_used", 80)):
+                     ("method_used", 76), ("isa_used", 80),
+                     ("t", 88), ("f_stat", 96)):
         check(getattr(TF.Result, fld).offset == off,
               f"Result.{fld} offset {getattr(TF.Result, fld).offset} != {off}")
-    print("struct drift check: done")
+    # ---- asm-vs-mirror table hash (ADR-0006; api.asm abi_table) --------------
+    # Interleaved (group, value) words in EXACTLY api.asm's row order:
+    # problem / result / gram_args / resid_args / version marker (4, 3).
+    prb = [getattr(TF.Problem, f).offset for f in
+           ("struct_size", "version", "X", "y", "w", "n", "p", "ldx",
+            "method", "flags", "lambda_", "rcond", "threads")]
+    res = [getattr(TF.Result, f).offset for f in
+           ("beta", "intercept", "sse", "sst", "r2", "r2_adj", "sigma2",
+            "cond_est", "se", "rank", "method_used", "isa_used", "t",
+            "f_stat")]
+    ga = [getattr(TG.GramArgs, f).offset for f in
+          ("X", "ldx8", "y", "w", "n", "p", "c", "G", "s", "Wout",
+           "scratch", "scratch_bytes")]
+    ra = [getattr(TG.ResidArgs, f).offset for f in
+          ("X", "ldx8", "y", "w", "n", "p", "b0", "beta", "sse_out",
+           "xtr_out", "rsum_out")]
+    pa = [getattr(TG.PredArgs, f).offset for f in
+          ("X", "ldx8", "beta", "b0", "n", "p", "out")]
+    qa = [getattr(TQ.QrArgs, f).offset for f in
+          ("X", "ldx8", "y", "w", "n", "p", "c", "Aug", "S", "Wout",
+           "sst", "norms", "work", "intercept")]
+    words = []
+    for group, vals, size in ((0, prb, C.sizeof(TF.Problem)),
+                              (1, res, C.sizeof(TF.Result)),
+                              (2, ga, C.sizeof(TG.GramArgs)),
+                              (3, ra, C.sizeof(TG.ResidArgs)),
+                              (4, pa, C.sizeof(TG.PredArgs)),
+                              (5, qa, C.sizeof(TQ.QrArgs))):
+        for v in vals:
+            words += [group, v]
+        words += [group, size]
+    words += [6, 3]                     # 3 = OLS_ABI_VERSION (result v3)
+    h = 0xcbf29ce484222325              # FNV-1a offset basis
+    for wv in words:
+        h = ((h ^ wv) * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF
+    h = ((h ^ len(words)) * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF
+    ols.ols_abi_offsets.restype = C.c_uint64
+    got = ols.ols_abi_offsets()
+    check(got == h,
+          f"ABI table hash: asm {got:#x} != mirror {h:#x} (layout drift)")
+    print("struct drift check: done (incl. ols_abi_offsets hash)")
+
+
+def test_nist_per_method():
+    """P3.8: all 9 datasets x {GRAM_CHOL, GRAM_CSNE, QR} -> results/
+    nist-phase3.json. Gates (pre-registered, PLAN G3 / phase-3 checklist):
+    QR >= 10 on Norris/Pontius/NoInt1/NoInt2, >= 6 on Longley/Wampler1-3;
+    CSNE >= 9 on the lower/average set (the 4 simple + Longley);
+    Filip/Wampler4-5 reported WITHOUT a target."""
+    import json
+    def design(name, x):
+        # per-dataset designs, mirroring the phase-1/2 tests: Norris and the
+        # NoInt sets are 1-parameter LINEAR (raw x); Pontius is [x, x^2];
+        # Longley keeps its 6 raw predictors; Wampler/Filip use the
+        # polynomial basis (deg 5 / deg 10). The first draft applied the
+        # degree-5 basis to everything — Norris/NoInt rows were then scored
+        # against certified values of a different model (LRE 0 garbage).
+        if name == "Pontius":
+            return np.column_stack([x, x**2])
+        if name in ("Norris", "NoInt1", "NoInt2"):
+            return x.reshape(-1, 1)
+        if name == "Longley":
+            return x
+        deg = 10 if name == "Filip" else 5
+        return np.column_stack([x**k for k in range(1, deg + 1)])
+
+    simple = ("Norris", "Pontius", "NoInt1", "NoInt2")
+    average = simple + ("Longley",)
+    gates = {"qr": {}, "gram_csne": {}, "gram_chol": {}}
+    for name in simple:
+        gates["qr"][name] = 10.0
+        gates["gram_csne"][name] = 9.0
+    gates["qr"]["Longley"] = 6.0
+    gates["gram_csne"]["Longley"] = 9.0
+    for name in ("Wampler1", "Wampler2", "Wampler3"):
+        gates["qr"][name] = 6.0
+
+    rows = []
+    for name in ("Norris", "Pontius", "NoInt1", "NoInt2", "Longley",
+                 "Wampler1", "Wampler2", "Wampler3", "Wampler4", "Wampler5",
+                 "Filip"):
+        dpath = ROOT / "data" / "nist" / f"{name}.dat"
+        if not dpath.exists():
+            continue
+        d = R.parse_nist(dpath)
+        no_int = name.startswith("NoInt")
+        Xd = d.X if name == "Longley" else design(name, d.X[:, 0])
+        row = {"dataset": name, "n": d.n, "p": int(Xd.shape[1]),
+               "lre": {}, "rc": {}}
+        def record(mname, out):
+            row["rc"][mname] = out["rc"]
+            if out["rc"] != 0:
+                row["lre"][mname] = None
+                return
+            b = [out["b0"], *out["beta"]] if not no_int else out["beta"]
+            cert = d.certified_b if no_int else d.certified_b[:len(b)]
+            lres = [R.lre(g, cv) for g, cv in zip(b, cert)]
+            row["lre"][mname] = min(lres)
+        for method, mname in ((1, "gram_chol"), (2, "gram_csne"), (3, "qr")):
+            record(mname, TF.fit(Xd, d.y, intercept=not no_int,
+                                 method=method))
+        if name == "Filip":
+            # the default rcond refuses Filip's equilibrated R diagonal;
+            # a caller forcing rcond=1e-16 gets the full-rank solve —
+            # report both (kernel-level: matches certified to ~7 digits)
+            record("qr_forced", TF.fit(Xd, d.y, intercept=True, method=3,
+                                       rcond=1e-16))
+        rows.append(row)
+        for mname in ("gram_chol", "gram_csne", "qr"):
+            gate = gates[mname].get(name)
+            lre = row["lre"][mname]
+            if gate is not None:
+                check(lre is not None and lre >= gate,
+                      f"{name} [{mname}]: rc={row['rc'][mname]} "
+                      f"minLRE={lre} < gate {gate}")
+        print(f"{name:9s} n={d.n:3d}: chol={row['lre']['gram_chol']} "
+              f"csne={row['lre']['gram_csne']} qr={row['lre']['qr']} "
+              f"qr_forced={row['lre'].get('qr_forced')}")
+
+    out_p = ROOT / "results" / "nist-phase3.json"
+    out_p.write_text(json.dumps({
+        "schema": 1,
+        "methods": ["gram_chol", "gram_csne", "qr"],
+        "gates": gates,
+        "note": "Filip/Wampler4-5 reported without a target (PLAN G3)",
+        "rows": rows,
+    }, indent=1))
+    print(f"wrote {out_p}")
+    print("NIST per-method: done")
 
 
 def test_cross_isa_gram():
@@ -244,6 +378,7 @@ if __name__ == "__main__":
     test_struct_drift()
     test_nist_via_fit()
     test_nist_expanded()
+    test_nist_per_method()
     test_guard_phase2()
     test_cross_isa_gram()
     print(f"\nPHASE2 PYRAMID: {'ALL GREEN' if not fails else f'{len(fails)} FAILURES'}")

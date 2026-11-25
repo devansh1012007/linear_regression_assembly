@@ -372,7 +372,9 @@ def make_kappa_problem(n: int, p: int, kappa: float, seed: int = 12345,
     """X = U diag(s) V' with random orthogonal U, V (QR of Gaussians),
     s geometric 1 -> 1/kappa. y = X b_true (+ noise). Returns X, y, b_true,
     and (for noisy cases) the mpmath reference solution.
-    cond2(X) ~= kappa^2 by construction (2-norm singular values 1..1/kappa).
+    cond2(X) = kappa exactly (2-norm singular values 1..1/kappa), so
+    cond2(X'X) ~= kappa^2 — the normal-equations loss is 2*log10(kappa)
+    digits.
     Noise is relative to ||y|| (noise_rel * ||X b_true||_2): sigma_max is 1,
     so absolute noise_std = noise_rel * ||Xb|| keeps the residual small in
     EVERY singular direction down to 1/kappa, which is the regime where
@@ -401,3 +403,232 @@ def asm_compatible_simple_fit(x, y) -> dict[str, float]:
     """Same formula order as the asm (Sxx from compensated raw sums) — used
     when bit-comparison of the FORMULA (not the asm) is needed."""
     return simple_fit(x, y)
+
+
+def mp_ridge(X: np.ndarray, y: np.ndarray, lam: float,
+             w: np.ndarray | None = None, dps: int = 60) -> dict[str, object]:
+    """High-precision ridge reference for the asm contract (P3.3b): minimize
+    sum_i w_i (y_i - b0 - x_i'b)^2 + lam * ||b||^2 — slopes only, intercept
+    never penalized. Solved as the augmented normal equations
+    (Z'WZ + lam*diag(0, I)) theta = Z'Wy with Z = [1|X] at `dps` digits."""
+    if mp is None:
+        raise ImportError("mpmath not available")
+    X = np.asarray(X, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+    n, p = X.shape
+    wv = np.ones(n) if w is None else np.asarray(w, dtype=np.float64)
+    with mp.workdps(dps):
+        Z = np.hstack([np.ones((n, 1)), X])
+        M = mp.zeros(p + 1, p + 1)
+        g = mp.zeros(p + 1, 1)
+        for i in range(n):
+            wi = mp.mpf(float(wv[i]))
+            yi = mp.mpf(float(y[i]))
+            zi = [mp.mpf(float(v)) for v in Z[i]]
+            for a in range(p + 1):
+                g[a] += wi * zi[a] * yi
+                for b in range(a, p + 1):
+                    M[a, b] += wi * zi[a] * zi[b]
+                    M[b, a] = M[a, b]
+        for j in range(1, p + 1):
+            M[j, j] += mp.mpf(float(lam))
+        sol = mp.lu_solve(M, g)
+        return {"b0": sol[0], "b": [sol[j] for j in range(1, p + 1)]}
+
+
+def mp_qr_ols(X: np.ndarray, y: np.ndarray, w: np.ndarray | None = None,
+              intercept: bool = True, dps: int = 60) -> dict[str, object]:
+    """High-precision Householder-QR reference following the qr.asm contract
+    exactly (ADR-0007), at `dps` digits:
+
+    1. Aug = [1 | X - 1c_x' | y - c_y] (intercept) or [X | y] (no intercept),
+       rows scaled by sqrt(w_i); c are the caller pivots (asm: first-256-row
+       weighted means, zeros without intercept).
+    2. Design columns (including the ones column) scaled to unit 2-norm.
+    3. Householder with the reflected choice alpha = -sign(x0)*||x|| (no
+       cancellation); reflectors applied to ALL columns including y.
+    4. beta_scaled = backsub(R, Q'y); beta_raw_j = beta_scaled_j / norm_j
+       (slopes only; the ones-column coefficient is discarded — b0 comes
+       from the exact weighted means: b0 = ybar - xbar'beta_raw).
+    5. sse = R[m-1][m-1]^2 (the [X|y]-byproduct). The reference also checks
+       this against ||y - X b||^2 directly at `dps` digits.
+    6. se from the centered scaled gram G = R_sub'R_sub - ss'/W formed from
+       the factor, chol-solved per e_j; se_j = sqrt(sigma2 * z_j)/norm_j,
+       intercept se via sigma2*(1/W + m_s'G^-1 m_s) with m_s = m/norm_j.
+
+    Returns dict(beta=[mp.mpf], b0, sse, se=[mp.mpf], rank=dc)."""
+    if mp is None:
+        raise ImportError("mpmath not available")
+    X = np.asarray(X, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+    n, p = X.shape
+    wv = np.ones(n) if w is None else np.asarray(w, dtype=np.float64)
+    with mp.workdps(dps):
+        # pivots: the asm uses weighted means of the first min(n,256) rows;
+        # the reference accepts them as inputs to mirror the contract, but
+        # for its OWN calls uses the exact weighted means (any c is exact —
+        # the ones column makes the formulation exact for any pivot).
+        cX = [mp.mpf(0)] * p
+        cy = mp.mpf(0)
+        # 1. build Aug (n x m), m = p + 1 + intercept
+        ic = 1 if intercept else 0
+        m = p + 1 + ic
+        Aug = [[mp.mpf(0)] * m for _ in range(n)]
+        W = mp.mpf(0)
+        s = [mp.mpf(0)] * (p + 1)          # pivot-shifted sums (raw units)
+        sst_s = mp.mpf(0)                  # sum w (y - cy)^2
+        for i in range(n):
+            sw = mp.sqrt(mp.mpf(float(wv[i])))
+            W += sw * sw
+            yi = mp.mpf(float(y[i]))
+            if ic:
+                Aug[i][0] = sw
+            for j in range(p):
+                v = mp.mpf(float(X[i][j])) - cX[j]
+                Aug[i][j + ic] = sw * v
+                s[j] += sw * sw * v
+            yv = yi - cy
+            Aug[i][p + ic] = sw * yv
+            s[p] += sw * sw * yv
+            sst_s += sw * sw * yv * yv
+        # exact weighted means for the reference b0 (the asm computes the
+        # same quantity via c + S/W with its own pivots)
+        xbar = [s[j] / W for j in range(p)]
+        ybar = s[p] / W
+        # 2. scale design columns to unit norm
+        norms = []
+        for j in range(m - 1):             # design columns = 0..m-2
+            ssq = mp.mpf(0)
+            for i in range(n):
+                ssq += Aug[i][j] * Aug[i][j]
+            nj = mp.sqrt(ssq)
+            norms.append(nj)
+            if nj != 0:
+                inv = 1 / nj
+                for i in range(n):
+                    Aug[i][j] *= inv
+        # 3. Householder on columns 0..m-2, applied to all m columns
+        dc = m - 1
+        for j in range(dc):
+            nrm2 = mp.mpf(0)
+            for i in range(j, n):
+                nrm2 += Aug[i][j] * Aug[i][j]
+            nrm = mp.sqrt(nrm2)
+            x0 = Aug[j][j]
+            alpha = -nrm if x0 >= 0 else nrm
+            v = [Aug[i][j] for i in range(j, n)]
+            v[0] = x0 - alpha
+            vnorm2 = 2 * nrm * (nrm + abs(x0))
+            Aug[j][j] = alpha
+            for i in range(j + 1, n):
+                Aug[i][j] = v[i - j]
+            beta_h = 2 / vnorm2
+            # w_k = sum_i v_i * Aug[i][k] over the trailing columns, then
+            # Aug[i][k] -= beta_h * v_i * w_k
+            for k in range(j + 1, m):
+                wk = mp.mpf(0)
+                for i in range(j, n):
+                    wk += v[i - j] * Aug[i][k]
+                wk *= beta_h
+                for i in range(j, n):
+                    Aug[i][k] -= v[i - j] * wk
+        # 4. back-substitution: R beta_s = (Q'y)[:dc]
+        bs = [mp.mpf(0)] * dc
+        for i in range(dc - 1, -1, -1):
+            acc = Aug[i][m - 1]
+            for k in range(i + 1, dc):
+                acc -= Aug[i][k] * bs[k]
+            bs[i] = acc / Aug[i][i]
+        beta_raw = [bs[ic + j] / norms[ic + j] for j in range(p)]
+        # 5. sse byproduct: after dc reflectors the y column rows dc..n-1
+        # are the UNPROCESSED residual tail (only dc rows of R exist), so
+        # sse = ||tail||^2 = sum_{i>=dc} Aug[i][m-1]^2 — cancellation-free.
+        # (An early draft claimed R[m-1][m-1]^2; the reference's own
+        # identity check caught it — only the FIRST tail entry is |R_dd|.)
+        sse_by = mp.mpf(0)
+        for i in range(dc, n):
+            sse_by += Aug[i][m - 1] * Aug[i][m - 1]
+        r2d = mp.mpf(0)
+        for i in range(n):
+            acc = mp.mpf(float(y[i]))
+            if ic:
+                b0c = ybar - sum(xbar[j] * beta_raw[j] for j in range(p))
+                acc -= b0c
+            for j in range(p):
+                acc -= mp.mpf(float(X[i][j])) * beta_raw[j]
+            r2d += mp.mpf(float(wv[i])) * acc * acc
+        assert abs(sse_by - r2d) <= mp.mpf(10) ** (-dps + 12) * max(1, r2d), \
+            "QR sse byproduct R_last^2 != ||r||^2 at reference precision"
+        # 6. se via formed gram (slope block p x p, scaled units).
+        # gram(A[:,1:]) = R[:,1:]'R[:,1:] — INCLUDING row 0 of R (the
+        # ones-column row contributes an outer product; an early draft
+        # started the sum at `off` and lost it). For the intercept case the
+        # shifted gram is then centered algebraically (G -= ss'/W); without
+        # an intercept the se gram is the RAW one (c = 0, no centering —
+        # same convention as the chol path).
+        off = ic                      # slope block of R_s: cols off..dc-1
+        G = [[mp.mpf(0)] * p for _ in range(p)]
+        for a in range(p):
+            for b in range(a, p):
+                acc = mp.mpf(0)
+                # sum over ALL rows of R[:,1:] that touch column off+a:
+                # rows 0..off+a (row 0 = the ones-column row when ic=1,
+                # off+a = the diagonal of column off+a; both were missing
+                # in earlier drafts — caught by this file's own
+                # reference-vs-numpy validation).
+                for i in range(0, off + a + 1):
+                    acc += Aug[i][off + a] * Aug[i][off + b]
+                G[a][b] = acc
+                G[b][a] = acc
+        if ic:
+            ss = [s[j] / norms[ic + j] for j in range(p)]  # scaled sums
+            for a in range(p):
+                for b in range(a, p):
+                    G[a][b] -= ss[a] * ss[b] / W
+                    G[b][a] = G[a][b]
+        # chol-solve G z = e_j per slope, intercept via 1/W + m_s'G^-1 m_s
+        ms = [xbar[j] / norms[ic + j] for j in range(p)]
+        dof = n - p - ic
+        sigma2 = sse_by / max(1, dof)
+        # chol-solve G z = e_j per slope via an EXPLICIT Cholesky G = L L'
+        # (an early draft divided by G_ii as if G were already a factor —
+        # only a triangular R may be solved that way; caught by validation)
+        L = [[mp.mpf(0)] * p for _ in range(p)]
+        for i in range(p):
+            for j in range(i + 1):
+                acc = G[i][j]
+                for k in range(j):
+                    acc -= L[i][k] * L[j][k]
+                if i == j:
+                    L[i][i] = mp.sqrt(acc)
+                else:
+                    L[i][j] = acc / L[j][j]
+
+        def _chol_solve_vec(rhs):
+            t = [mp.mpf(0)] * p
+            for i in range(p):                     # L t = rhs
+                acc = rhs[i]
+                for k in range(i):
+                    acc -= L[i][k] * t[k]
+                t[i] = acc / L[i][i]
+            z = [mp.mpf(0)] * p
+            for i in range(p - 1, -1, -1):         # L' z = t
+                acc = t[i]
+                for k in range(i + 1, p):
+                    acc -= L[k][i] * z[k]
+                z[i] = acc / L[i][i]
+            return z
+
+        se = []
+        for j in range(p):
+            z = _chol_solve_vec([mp.mpf(1) if i == j else mp.mpf(0)
+                                 for i in range(p)])
+            se.append(mp.sqrt(sigma2 * z[j]) / norms[ic + j])
+        # intercept se
+        z = _chol_solve_vec(ms)
+        mGm = sum(ms[j] * z[j] for j in range(p))
+        se0 = mp.sqrt(sigma2 * (1 / W + mGm))
+        se = se + [se0]
+        return {"beta": beta_raw, "b0": ybar - sum(xbar[j] * beta_raw[j]
+                                                   for j in range(p)),
+                "sse": sse_by, "se": se, "rank": dc}

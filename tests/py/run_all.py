@@ -9,6 +9,9 @@ Levels (asm-verification §1):
   5. Properties (scale, shift, permutation, offset-1e9 adversarial)
   6. Accuracy: NIST LRE table (gate: >= 10 on Norris/Pontius/NoInt1/NoInt2)
   7. Cross-ISA: sse2 vs avx2 within documented bounds
+  8. Property suite (tests/props): mpmath differential over random problems,
+     permutation invariance, exact recovery, unit-weight degeneracy,
+     residual orthogonality, condition-number sweep
 Exit code 0 iff everything passes. Writes results/pyramid-summary.json.
 """
 import ctypes as C
@@ -142,12 +145,12 @@ def test_abi_probe_all_exports():
 # ---------------------------------------------------------------- level 3
 def test_guard_pages():
     """Runs the C guard harness (self-test + dot template n=0..300)."""
-    exe = ROOT / "build" / "test_guard_full"
+    exe = ROOT / "build" / "tests" / "test_guard_full"
     src = ROOT / "tests" / "guard" / "test_guard_full.c"
     if not exe.exists() or exe.stat().st_mtime < src.stat().st_mtime:
         subprocess.run(["gcc", "-O2", "-std=c11", "-Wall", "-Wextra", "-Werror",
                         "-Iinclude", "-Itests/guard", "-o", str(exe), str(src),
-                        "-Lbuild", "-lols", f"-Wl,-rpath,{ROOT}/build"],
+                        "-Lbuild/lib", "-lols", f"-Wl,-rpath,{ROOT}/build/lib"],
                        check=True, cwd=ROOT)
     r = subprocess.run([str(exe)], capture_output=True, text=True, timeout=300)
     check(r.returncode == 0, f"guard harness failed: {r.stdout[-500:]} {r.stderr[-300:]}")
@@ -321,6 +324,22 @@ def test_cross_isa():
     print("L7 cross-ISA: done")
 
 
+def test_props_suite():
+    """L8: property-based tests from tests/props/test_props.py (P1-P6)."""
+    props_dir = ROOT / "tests" / "props"
+    sys.path.insert(0, str(props_dir))
+    try:
+        import test_props
+    except ImportError as e:
+        check(False, f"props suite import: {e}")
+        return
+    ok = test_props.run(FAILURES)
+    if not ok:
+        for f in test_props.FAILS:
+            check(False, f"props: {f}")
+    print("L8 properties (tests/props): done")
+
+
 def main():
     test_shapes_and_offsets()
     test_abi_probe_all_exports()
@@ -329,6 +348,7 @@ def main():
     test_properties()
     nist = test_nist()
     test_cross_isa()
+    test_props_suite()
     summary = {
         "pass": not FAILURES,
         "failures": FAILURES[:50],

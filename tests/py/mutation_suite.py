@@ -2,7 +2,7 @@
 """tests/py/mutation_suite.py — fast differential suite used by the mutator.
 
 Runs a representative subset of the pyramid against the MUTATED library
-(pointed to by $OLS_MUT_SO; default build/libols.so) and exits nonzero on any
+(pointed to by $OLS_MUT_SO; default build/lib/libols.so) and exits nonzero on any
 mismatch. Small enough to run ~50x, sharp enough to catch kernel mutations:
   - sums/dots across boundary sizes (n mod 4, mod 8, mod 16) both ISAs
   - axpy write check
@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(ROOT / "tests" / "ref"))
 import ols_ref as R
 
-LIB = Path(os.environ.get("OLS_MUT_SO", ROOT / "build" / "libols.so"))
+LIB = Path(os.environ.get("OLS_MUT_SO", ROOT / "build" / "lib" / "libols.so"))
 ols = C.CDLL(str(LIB))
 for fn in ("ols_sum_f64_sse2", "ols_sum_f64_avx2"):
     f = getattr(ols, fn); f.restype = C.c_double
@@ -60,8 +60,51 @@ def chk(cond, msg):
         print("MUT-CAUGHT:", msg)
 
 
+def cancellation_battery():
+    """Exactly-referenced cancellation cases (P3.9 survivor fix): the sum/dot
+    survivors degrade Neumaier to plain sequential summation, which loses
+    ~16 digits on these inputs; math.fsum is the exactly-rounded oracle.
+    numpy's own sum ALSO fails most of these (sequential too) — that is why
+    the differentials never caught the mutants."""
+    import math
+    cases = [
+        # big + small + negative-of-big: exact answer = small chain
+        [1e16, 1.0, 2.0, -1e16, 3.0],
+        [3e15, 1.0, 1.0, -3e15],
+        [1e17, 5.0, -1e17, 5.0],
+        # alternating cascade (classic Kahan demo)
+        [1.0] + [1e-1, -1e-1] * 40,
+        # scaled pair sums at various sizes
+        [1e12, 1e-4, 1e-4, 1e-4, -1e12],
+        [2.2e14, 1.0, 3.0, -2.2e14, 7.0],
+    ]
+    for a in cases:
+        ref = math.fsum(a)
+        # BOTH sum kernels are Neumaier by contract -> oracle-strict
+        for isa in ("sse2", "avx2"):
+            s = getattr(ols, f"ols_sum_f64_{isa}")(np.ascontiguousarray(a), len(a))
+            chk(abs(s - ref) <= 1e-14 * max(1.0, abs(ref)),
+                f"sum-cancel {isa} ref={ref!r} got={s!r}")
+    # dot: ONLY the sse2 path is compensated by contract (dot.asm header:
+    # avx2 = 4x4 FMA accumulators, error <= gamma_2n * sum|ab| — the
+    # compensated variant is the sse2 reference and the Dot2 COULD item).
+    # So: sse2 strict vs fsum; avx2 only within its DOCUMENTED bound.
+    A = np.array([1e16, 1.0, 2.0, -1e16, 3.0])
+    B = np.ones(5)
+    ref = math.fsum(A * B)
+    d = ols.ols_dot_f64_sse2(np.ascontiguousarray(A), B, 5)
+    chk(abs(d - ref) <= 1e-14 * max(1.0, abs(ref)),
+        f"dot-cancel sse2 ref={ref!r} got={d!r}")
+    bound = 1e-15 * float(np.abs(A * B).sum()) * 10   # gamma_2n, n=5, loose
+    d = ols.ols_dot_f64_avx2(np.ascontiguousarray(A), B, 5)
+    chk(abs(d - ref) <= bound,
+        f"dot-cancel avx2 beyond documented bound: ref={ref!r} got={d!r} "
+        f"bound={bound!r}")
+
+
 def main():
     rng = np.random.default_rng(4242)
+    cancellation_battery()
     sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 15, 16, 17, 20, 31, 32, 33, 63, 64, 65, 100]
     for n in sizes:
         a = rng.standard_normal(n) * (10.0 ** float(rng.integers(-3, 4)))
@@ -76,6 +119,10 @@ def main():
         ols.ols_axpy_f64_avx2(2.5, a, y, n)
         chk(np.max(np.abs(y - (b + 2.5 * a))) <= 1e-12 * max(1, np.max(np.abs(b))),
             f"axpy avx2 n={n}")
+        y2 = b.copy()
+        ols.ols_axpy_f64_sse2(2.5, a, y2, n)
+        chk(np.max(np.abs(y2 - (b + 2.5 * a))) <= 1e-12 * max(1, np.max(np.abs(b))),
+            f"axpy sse2 n={n}")
         if n >= 5:
             x = np.ascontiguousarray(a); yy = np.ascontiguousarray(b)
             out = np.zeros(7)
