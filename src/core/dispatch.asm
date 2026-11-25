@@ -1,8 +1,11 @@
 ; ------------------------------------------------------------------------------
-; dispatch.asm — ISA dispatch skeleton (Phase 0: feature report only).
-; The full function-pointer table arrives with the Phase-2 Gram kernels; here
-; we expose ols_init/ols_isa for the harness so ctypes bindings and machine
-; characterization have one canonical place to ask "which ISA are we on".
+; dispatch.asm — ISA selection (the one canonical ols_init/ols_isa).
+; Kernel selection itself lives at the fit call site (fit.asm branches on
+; ols_isa() to pick the AVX2 or SSE2 Gram kernel); this module owns the
+; policy. AUTO caps at AVX2 and explicit AVX-512 requests are clamped to
+; AVX2: no AVX-512 kernel exists yet, and ols_isa() must never advertise
+; capability the library does not implement (review finding §5).
+; ols_cpu_has_avx512 stays a truthful CPU feature report for the harness.
 ; OLS_FORCE_ISA=sse2|avx2|avx512 overrides detection (testing only) — env
 ; reading needs libc, so the override is a variable the HARNESS sets before
 ; calling ols_init; the core itself stays syscall-free.
@@ -11,7 +14,6 @@ default rel
 %include "src/abi.inc"
 
 extern ols_cpu_has_avx2_fma
-extern ols_cpu_has_avx512
 
 section .data align=8
 ols__isa_selected:  dd -1                   ; -1 = uninitialized
@@ -21,7 +23,8 @@ section .text
 
 ; int32_t ols_init(int32_t force_isa)
 ; Args    : edi = -1 (auto) | OLS_ISA_SSE2(0) | OLS_ISA_AVX2(1) | OLS_ISA_AVX512(2)
-; Returns : eax = isa selected (0/1/2)
+; Returns : eax = isa selected (0 or 1 — AVX-512 requests clamp to 1 until an
+;           AVX-512 kernel exists)
 ; Requires: force_isa values other than -1..2 are treated as -1 (auto)
 ; Memory  : writes the 4-byte global ols__isa_selected (idempotent)
 ; Clobbers: rax, rcx, rbx(saved via callee), rdx
@@ -33,17 +36,14 @@ ols_init:
     je      .auto
     cmp     edi, OLS_ISA_AVX512
     ja      .auto                        ; out of range -> auto
+    cmp     edi, OLS_ISA_AVX2
+    jbe     .forced
+    mov     edi, OLS_ISA_AVX2            ; clamp: no AVX-512 kernel yet
+.forced:
     mov     [ols__isa_selected], edi
     mov     eax, edi
     ret
 .auto:
-    call    ols_cpu_has_avx512 wrt ..plt
-    test    eax, eax
-    jz      .try_avx2
-    mov     dword [ols__isa_selected], OLS_ISA_AVX512
-    mov     eax, OLS_ISA_AVX512
-    ret
-.try_avx2:
     call    ols_cpu_has_avx2_fma wrt ..plt
     test    eax, eax
     jz      .sse2
