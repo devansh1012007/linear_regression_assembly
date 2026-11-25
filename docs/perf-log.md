@@ -61,3 +61,158 @@ Format: `### date kernel | hypothesis | change | predicted | measured (median, C
 
 ### 2026-11-20 machine/roofline | measured | - | - | measured p* = 23.4 (1 thread, DRAM) | VERDICT: fused Gram is DRAM-bound for p+1 < ~28, FMA-bound above; Phase-2 narrow kernels are bandwidth-bound and accuracy flops are free there | evidence: results/machine.json
 
+
+
+## Phase-2 predictions (written BEFORE the gram benchmark)
+### 2026-11-20 kernel/gram-avx2 | perf-log #11
+- PREDICTED: q=8 -> ~8-12 cy/row; q=32 -> ~45-60 cy/row (FMA-bound); DRAM floor 8q B/row.
+### 2026-11-20 kernel/chol-sse2 | perf-log #13
+- PREDICTED: q^3/3 scalar flops, ~1.5-2 cy/flop (solve-phase; not hot for tall-skinny).
+### 2026-11-20 kernel/residual-sse2 | perf-log #16
+- PREDICTED: ~2p+14 ops/row -> q=8 ~20 cy/row.
+### 2026-11-20 kernel/pivot-means | perf-log #18
+- PREDICTED: ~(q+8) ops/row over nb rows.
+
+## Phase-2 measurements (results/gram-bench.json, commit to follow)
+### 2026-11-20 kernel/gram-avx2 | MEASURED | verdict: GATE FAILED (honest)
+- predicted 8-12 cy/row (q=8); measured ~190 ns/row (~680 cy at 3.567 GHz).
+- Throughput ~0.34 GB/s vs DRAM 16.2 GB/s single-thread: ~2% of the G2
+  bandwidth target. L2 vs DRAM nearly identical -> compute/latency bound,
+  not memory bound: the per-element sqrt(w) reloads in the s-loop (q sqrtsd
+  per row instead of 1 per row), scalar G tails, and strided G access
+  dominate. Root causes identified; kernel redesign (row-scale stash,
+  panel-local s accumulation, contiguous G blocking) is queued as the first
+  Phase-2b task. Correctness (differential, guard, NIST) is fully green;
+  ONLY the performance gate is red.
+
+## Phase-2b redesign — prediction (written BEFORE any v2 benchmark)
+### 2026-11-20 machine/load-ports | measured | bench/machine/load_bench.c, /tmp ports check
+- machine.json load_l1 56.12 GB/s = dependency-chain artifact: ld1_dep reproduces it
+  (57.6 GB/s); independent chains: ld8_ind 921/8 = 115 GB/s = 1.0 ymm-load/cyc;
+  stores >= 1/cyc; copy8 0.87 cyc per load+store pair; rmw8 1.0 mem-FMA/cyc.
+- Host model for design: 1 FMA/cyc (latency 8), ~1.15 load-uops/cyc, ~1 store/cyc.
+
+### 2026-11-20 kernel/gram-avx2-v2 | predicted (perf-log #20, pre-benchmark)
+- Design: pack (pivot-shift; sqrt(w) ONCE per row; zero-pad to QN=((q+7)&-8);
+  plain vector sums + per-block Neumaier fold for s and W) into PKG (B*QN
+  doubles, B=clamp(1536/QN,8,64) rounded down to x4); G scratch COLUMN-major
+  (stride QSC=QN+8 so chunks of 8 G-rows x 1 col are contiguous AND 32B-aligned).
+  Kernel C (q<=8): q column accumulators in ymm (D=2 duplication for q<=6 to
+  cover the 8-cyc FMA latency), per row: 1 u-load + q bcast-loads + q FMA,
+  flush to GSCR per block. Kernel A (q>=9): row-groups R=6; per (i0, j>=i0):
+  1 GSCR load + 6 FMA + 1 store; u-chunks hoisted at i0 level; broadcasts in
+  mem form (1 load-uop each).
+- FMA counts/row (structural floor analysis): q=17 -> 27 chunks (pairs 153/8
+  lane-floor 19 unreachable without unaligned reg slices; 27 = aligned-chunk
+  minimum incl. pad); q=32 -> 80; q=8 -> 8 (kernel C).
+- PREDICTED cycles/row (3.566 GHz):
+  - q=8 out-of-cache: DRAM floor 12.0; C ~9-11 + pack ~5-7 -> v1 total 15-18
+    -> 12.7-15.2 GB/s = 67-80% of 18.89 GB/s.
+  - q=17 out-of-cache: floor 25.5; A ~27-31 (FMA-bound, loads 29/row*0.87=25)
+    + pack ~10-13 -> v1 total 38-44 -> 11.0-12.8 GB/s = 58-68%; with pack
+    software-pipelined (v2): 28-32 -> 15.1-17.3 GB/s = 80-92%.
+  - q=32 in-cache: A ~82-95 cy/row vs flops-bound 66 -> 69-80% (>=70% gate,
+    marginal); q=16 in-cache: A ~26-30 vs bound 17 -> 57-65% (below the
+    pre-registered 70% — expected host-vs-Zen delta, ADR-0005 if confirmed).
+- Iteration plan: v1 measure -> v2 pack software-pipeline / R-tune as evidence
+  directs -> v3 micro-tune; escalate per PLAN if <50% after 3 evidence-backed
+  iterations. ADR-0005 will document pre-registered-gate vs this-host physics.
+
+### 2026-11-20 kernel/gram-avx2-v2 | IMPLEMENTATION PAUSED — honest negative result
+- v2 (group-pipelined column-panel, see prediction above) brought through ~10
+  bring-up fixes (documented in src/dev/README.md): do-while fold overrun for
+  q mod 8 != 0, vmovaps pad misalignment, eax clobbers (mov eax,1 in the w=0
+  path; vmovmskpd in chunk paths), kernA chunk-count/cursor, compact
+  double-advance, Wb accumulation, second sqrt(w) factor for s.
+- Remaining open bug: for p >= 4 (chunk paths active) packed rows 2..3 lose
+  their columns; loads appear to alias (c-load reads rdi+16) while dumped
+  rdi/r11 read 0 from the frame slots — self-contradictory evidence, root
+  cause not identified within the session. Probes preserved in
+  src/dev/probes.tar.gz; next step documented in src/dev/README.md.
+- DECISION per AGENTS §7 escalation: v1 kernel restored as the shipping
+  implementation (differential/guard/NIST all green at this commit); v2 work
+  parked in src/dev/. No performance claims for v2; G2 perf gate remains RED
+  (~2% of DRAM bound, root causes in the v1 MEASURED entry above).
+
+### 2026-11-21 kernel/gram-avx2-v3 | MEASURED | results/gram-bench-v3.json (schema 1)
+- predicted (perf-log #20): q=8 ~15-18 cy/row; q=17 ~28-32 pipelined; q=32
+  in-cache ~82-95 cy/row. MEASURED (median, CV 0.5-3.6%): q=8 17.2 ns/row
+  (61 cy), q=17 24.4 (87 cy), q=32 50.5 (180 cy), q=65 152.9 (545 cy).
+- vs v1: 0.33 -> 3.73 GB/s (q=8, 11.3x), 0.26 -> 5.57 (q=17, 21.4x),
+  0.24 -> 5.07 (q=32, 21.1x), 0.24 -> 3.40 (q=65, 14.2x).
+- vs machine bounds (2 FMA/cyc from characterize.py knee=15acc/57.62 GFLOPs;
+  DRAM 16.2 GB/s 1t): q=8 23% (DRAM-bound 4.0 ns), q=17 34% (DRAM 8.4),
+  q=32 44% (FMA-bound 22.4), q=65 54% (FMA-bound 83.3).
+- Root causes found and fixed this iteration (2 of 3 used):
+  1. SSE/VEX transition penalty (~2x): legacy movsd/ucomisd/subsd/mulsd
+     after VEX ops on the same registers. ALL AVX2-region scalar ops are now
+     VEX-encoded.
+  2. Per-element NaN-check chains in the pack scalar tail (~6x on q=8):
+     replaced by ONE row-sentinel (vaddsd into xmm11 + single vucomisd after
+     the tail; NaN sticks through adds). Chunk path keeps its per-chunk
+     vcmppd. NaN contract re-verified: X/y/w NaN and w<0 -> -6, Inf
+     propagates.
+  3. (correctness, from bring-up) vmovupd-ymm = 4 doubles not 8: packer
+     chunk stride, kernel C two-half rows + per-group GSCR flush, kernel A
+     8-row chunks, GSCR QN rows, i0-lane scaling.
+- VERDICT: G2 gate (>=85% of bound) NOT met: 23-54%. Above the 50%
+  escalation threshold after 2 evidence-backed iterations. Remaining gap
+  analysis: q=8/17 DRAM-bound cases run ~4x above the DRAM floor — the
+  pack's X-load path (width-limited loads + scalar y + sentinel add per
+  row) and the PKG round-trip still dominate; the prescribed next step is
+  fusing the pack into the consuming kernels (no PKG store/load round trip)
+  and software-pipelining the X stream. Parked in favor of closing Phase-2
+  MUST items; the ADR records the decision.
+
+### 2026-11-25 kernel/csne-refinement | predicted (pre-measurement, P3.3)
+- CSNE = 2 extra residual passes + 2 q^2 triangular solves on the gram_csne
+  path; the correction reuses the EXISTING chol factor (no refactorization).
+  Predict: gram_csne end-to-end ~ gram path + 3 residual passes total
+  (refine x2 + stats); wall-time impact small vs the gram sweep (residual
+  pass predicted ~20 cy/row at q=8, perf-log #16).
+- Accuracy gate (pre-registered, PLAN.md Phase 3): recovers >= 12 LRE vs
+  mpmath on kappa=1e4 zero-residual problems, where plain chol measures ~7
+  (kappa^2*u ~ 2e-8). Measured value lands in results/ when the kappa
+  sweep (P3.7) runs.
+
+### 2026-11-25 kernel/ridge-wiring | predicted (pre-measurement, P3.3b)
+- +p addsd into the G diagonal before factorization: < 1% of fit cost.
+- Numerics note: se/t under lambda>0 come from the regularized inverse
+  (ridge covariance) — documented contract, differential-pinned vs mpmath.
+
+# Phase 5 ladder (session 5) — measured 2026-11-25, sandbox (CPU-quota capped)
+
+Predictions written BEFORE the run (per the predict-then-measure rule):
+- Expected: numpy-blas fastest (dsyrk + threading), asm-v3 second at q=17
+  (the panel kernel amortizes), intrin mid, naive-O2 last.
+- Measured (ns/row, best of 3):
+
+| rung | n=2e5 q=8 | n=2e5 q=17 | n=1e6 q=8 | n=1e6 q=17 |
+|---|---|---|---|---|
+| naive-O2 | 18.05 | 68.96 | 19.04 | 70.37 |
+| naive-O3 | 17.23 | 42.96 | 17.41 | 44.16 |
+| intrin (O2) | 16.08 | 51.39 | 16.21 | 59.96 |
+| intrin (O3) | 22.30 | 63.62 | 22.92 | 75.67 |
+| asm-v3 | 16.62 | 23.97 | 16.73 | 24.79 |
+| numpy-blas | **7.42** | **24.19** | **7.24** | 27.48 |
+
+Surprises (honest):
+1. numpy-blas is 2.2x faster than asm-v3 at q=8 (7.4 vs 16.6 ns/row) —
+   OpenBLAS dsyrk uses the FULL machine (this sandbox quota ~2 cores);
+   asm-v3 is single-threaded in the ladder. At q=17 numpy still wins
+   (24.2 vs 24.0 — a tie within noise at n=2e5; 27.5 vs 24.8 = asm WINS
+   at n=1e6, the DRAM-bound case, +11%).
+2. gcc -O3 auto-vectorization made the INTRINSICS rung SLOWER (22.3 vs
+   16.1 ns/row at q=8) — the vectorizer rearranged the stripe loop and
+   broke the broadcast/FMA pattern. Lesson recorded for the skills.
+3. asm-v3 vs naive-O2: 1.09x at q=8, 2.9x at q=17 — the panel kernel's
+   advantage GROWS with q, as designed, but the q=8 narrow path has no
+   headroom over plain compiled C in a throttled sandbox.
+
+Verdicts (sandbox-relative, honestly caveated):
+- G2 (>= 85% of bandwidth): RED (was already; ladder adds context).
+- H2 (beat the ladder): RED overall — numpy-blas wins 3 of 4 cases;
+  asm-v3 wins only the q=17, n=1e6 DRAM-bound case (+11% vs numpy).
+- The ladder artifact (results/ladder.json + bench/ladder/) is ready for
+  a bare-metal `make repro` re-run where OpenBLAS threads get the real
+  core count and asm-v3 gets ols_gram_mt.
