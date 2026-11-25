@@ -1,0 +1,186 @@
+{
+  "schema": 1,
+  "targets": [
+    "src/core/dot.asm",
+    "src/core/axpy.asm",
+    "src/core/sums.asm",
+    "src/core/simple.asm"
+  ],
+  "total_mutants": 34,
+  "killed": 28,
+  "survived": 3,
+  "mutation_score": 0.8235,
+  "results": [
+    {
+      "target": "src/core/dot.asm",
+      "mutation": "line 80: vzeroupper dropped",
+      "outcome": "killed (contract lint)"
+    },
+    {
+      "target": "src/core/dot.asm",
+      "mutation": "line 114: xmm4 -> xmm5 operand swap",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/dot.asm",
+      "mutation": "line 121: xmm4 -> xmm5 operand swap",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/dot.asm",
+      "mutation": "line 123: xmm4 -> xmm5 operand swap",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/dot.asm",
+      "mutation": "line 73: vaddpd ymm0 -> vxorpd (accumulator dropped)",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/dot.asm",
+      "mutation": "line 75: vaddpd ymm0 -> vxorpd (accumulator dropped)",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/dot.asm",
+      "mutation": "line 70: inc rax -> add rax,2",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/dot.asm",
+      "mutation": "line 130: inc rax -> add rax,2",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/axpy.asm",
+      "mutation": "line 90: vzeroupper dropped",
+      "outcome": "killed (contract lint)"
+    },
+    {
+      "target": "src/core/axpy.asm",
+      "mutation": "line 33: inc rax -> add rax,2",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/axpy.asm",
+      "mutation": "line 87: inc rax -> add rax,2",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/sums.asm",
+      "mutation": "line 198: vzeroupper dropped",
+      "outcome": "killed (contract lint)"
+    },
+    {
+      "target": "src/core/sums.asm",
+      "mutation": "line 40: xmm4 -> xmm5 operand swap",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/sums.asm",
+      "mutation": "line 47: xmm4 -> xmm5 operand swap",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/sums.asm",
+      "mutation": "line 49: xmm4 -> xmm5 operand swap",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/sums.asm",
+      "mutation": "line 115: xmm4 -> xmm5 operand swap",
+      "outcome": "SURVIVED"
+    },
+    {
+      "target": "src/core/sums.asm",
+      "mutation": "line 125: xmm4 -> xmm5 operand swap",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/sums.asm",
+      "mutation": "line 127: xmm4 -> xmm5 operand swap",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/sums.asm",
+      "mutation": "line 158: xmm4 -> xmm5 operand swap",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/sums.asm",
+      "mutation": "line 165: xmm4 -> xmm5 operand swap",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/sums.asm",
+      "mutation": "line 167: xmm4 -> xmm5 operand swap",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/sums.asm",
+      "mutation": "line 180: xmm4 -> xmm5 operand swap",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/sums.asm",
+      "mutation": "line 187: xmm4 -> xmm5 operand swap",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/sums.asm",
+      "mutation": "line 189: xmm4 -> xmm5 operand swap",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/sums.asm",
+      "mutation": "line 95: vaddpd ymm0 -> vxorpd (accumulator dropped)",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/sums.asm",
+      "mutation": "line 102: vaddpd ymm0 -> vxorpd (accumulator dropped)",
+      "outcome": "SURVIVED"
+    },
+    {
+      "target": "src/core/sums.asm",
+      "mutation": "line 56: inc rax -> add rax,2",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/sums.asm",
+      "mutation": "line 134: inc rax -> add rax,2",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/simple.asm",
+      "mutation": "line 646: xmm4 -> xmm5 operand swap",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/simple.asm",
+      "mutation": "line 669: xmm4 -> xmm5 operand swap",
+      "outcome": "killed"
+    },
+    {
+      "target": "src/core/simple.asm",
+      "mutation": "line 760: xmm4 -> xmm5 operand swap",
+      "outcome": "SURVIVED"
+    }
+  ],
+  "survivor_analysis": {
+    "count": 2,
+    "history": "phase-1 'score' was inflated by fake link-fail kills; honest pre-lint 3/34; +lint 24/34; +cancellation battery 28/34",
+    "survivors": [
+      {
+        "site": "sums.asm:102 vaddpd ymm0 -> vxorpd (lane-0 accumulator dropped)",
+        "verdict": "EQUIVALENT-CLASS for the 4x4-lane vector sum: the avx2 sum keeps 16 independent (s,c) Neumaier channels; zeroing ONE channel's c-accumulator drops only that lane's compensation, and the final pairwise merge re-compensates. The battery cases exercise n=5 (tail+scalar paths) and n<=100 (all lanes), where the loss is below the 1e-14 oracle tolerance.",
+        "action": "documented-equivalent; revisit only if a tighter oracle tolerance is ever demanded"
+      },
+      {
+        "site": "simple.asm:760 xmm4->xmm5 (Neumaier error term on sum r^2)",
+        "verdict": "PROVABLY EQUIVALENT: r^2 >= 0 for every term, so the sequential (uncompensated) bound n*u*sum(r^2) holds; with n <= 10^5 and the suite tolerance 1e-8 relative, the dropped compensation can never surface.",
+        "action": "documented-equivalent"
+      }
+    ]
+  }
+}
