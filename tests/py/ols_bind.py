@@ -3,7 +3,10 @@ import ctypes as C
 import numpy as np
 from pathlib import Path
 
-LIB = Path(__file__).resolve().parent.parent.parent / "build" / "libols.so"
+TEST_LIB = Path(__file__).resolve().parent.parent.parent / "build" / "tests" / "libolstest.so"
+PROD_LIB = Path(__file__).resolve().parent.parent.parent / "build" / "lib" / "libols.so"
+# tests need abi_probe_call (test-only export): prefer the test-support lib
+LIB = TEST_LIB if TEST_LIB.exists() else PROD_LIB
 assert LIB.exists(), f"build the library first: make harness ({LIB})"
 
 ols = C.CDLL(str(LIB))
