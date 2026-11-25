@@ -1,0 +1,4 @@
+# Test / benchmark dependencies (the library itself is C + NASM, no deps).
+numpy>=1.24
+scipy>=1.10        # stats differential (se/t/p-value reference)
+mpmath>=1.3        # high-precision reference solver (tests/ref/ols_ref.py)
