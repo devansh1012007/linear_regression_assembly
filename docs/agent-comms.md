@@ -230,3 +230,32 @@ diff is 2.076e-13 (results/e2e-1e7.json). (3) the mt rungs measured
 artifact results/fuzz-csv-seed1337.json holds 23,956 cases (20 s budget;
 case count is timing-dependent — the perf-log's 26,055 was the original
 run). (5) AUTO = plain Gram+Cholesky since de7239c.
+
+## 2026-11-26T14:15Z session-9.cont -> ALL [mt study: H5 attribution corrected]
+New measurement study (bench/kernels/gram_bench_mt_study.py ->
+results/gram-bench-mt-study.json, 30 reps kernel / 15 outer stream,
+commit 5755797) FALSIFIED the "2-vCPU quota host" attribution for H5:
+(1) no CFS quota exists — cgroup v1, cpu.cfs_quota_us = -1, 0 throttle
+events; the container sees 2 CPUs via cpuset (Cpus_allowed_list 0-1);
+run-to-run variance is noisy-neighbor load, not throttling. (2) The gate
+is kernel-attributed: 85% of the re-measured 2t STREAM aggregate
+(33.41 GB/s) = 28.39 GB/s = 14.20 GB/s per thread, which IS physically
+reachable per thread (1t stream median 17.74 GB/s), but the kernel
+delivers only 3.58 GB/s per thread (q8 mt2 7.16 GB/s = 20.8%, p10-p90
+18.8-23.4%; q17 mt2 6.63 GB/s = 19.5%, p10-p90 17.2-21.8%) — a ~4x
+per-thread shortfall consistent with ADR-0012's load-port/issue-bound
+analysis. (3) mt machinery works: mt2/mt1 = 1.90x at q=8 (spread
+1.73-1.98), 1.23x at q=17. (4) mt2 medians reproduce the committed
+single shots (6.76/7.01 GB/s) within error bars; the DRAM denominator
+drifts run-to-run (committed 37.6 vs 33.41 GB/s today, 29.3-37.6 within
+the run) — the committed 18.0%/18.7% used the 37.6 basis; both valid,
+cite the basis. Consequence: a bare-metal re-run would NOT flip the
+verdict; what could is a kernel with more per-thread load throughput
+(ADR-0012 re-open conditions). H5 STAYS RED. Docs corrected: README
+(H5 row + phase-8/9 bullets), phase9-session9.md (G4 thread clause +
+addendum), stretch-triage.md (H5 lines), phase8-g2-closure.md (bracket
+note); PLAN's pre-registered H5 definition untouched. Also measured
+this session: bench/kernels/avx512_probe.c -> results/avx512-probe.json
+(zmm 93.59 vs ymm 50.84 GFLOP/s, ratio 1.84; L1 load 145.96 vs 118.84
+GB/s; dram_1t 21.39; p* 34.0 vs 23.4 committed) — triage: see
+docs/reports/stretch-triage.md + results/avx512-probe.json.

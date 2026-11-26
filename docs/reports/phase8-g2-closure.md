@@ -66,7 +66,9 @@ iteration, then closure with an impossibility argument.
 - G2: RED, CLOSED with evidence (ADR-0012) — was the last open MUST-gate
   performance clause.
 - H5 (>= 85% of all-thread BW via N threads): RED on this host (18.0% /
-  18.7% measured, 2-vCPU quota). The mt machinery itself is verified
+  18.7% measured, 2-vCPU quota
+  [corrected 2026-11-26: no CFS quota exists — cpuset 2 CPUs; see
+  results/gram-bench-mt-study.json]). The mt machinery itself is verified
   (same-T bitwise reproducibility per ADR-0008 unchanged).
 - G0/G1/G3/G4: green (unchanged). Pyramid: ALL GREEN at final HEAD with
   the v3 dispatch restored. Mutation: 28/34 killed = 0.8235

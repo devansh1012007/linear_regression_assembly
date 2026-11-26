@@ -376,3 +376,7 @@ on seed 42 (5,731 cases) and seed 1337 (26,055 cases in that run; the
 committed artifact results/fuzz-csv-seed1337.json, created at a 20 s
 budget, holds 23,956 — case count is timing-dependent at fixed budget).
 The bugs are locked by tests/py/cli_regression.py in make verify.
+
+### 2026-11-26 kernel/gram-mt-h5-study | measured | - | predicted: H5 needs >= 85% of all-thread DRAM BW | measured: 2t stream 33.41 GB/s -> gate 28.39 GB/s (14.20 GB/s/thread; 1t stream 17.74 reachable); ols_gram_mt mt2 q8 7.16 GB/s = 20.8% (p10-p90 18.8-23.4%), q17 6.63 GB/s = 19.5% (p10-p90 17.2-21.8%); per-thread kernel 3.58 GB/s (~4x shortfall); mt2/mt1 1.90x (q8) / 1.23x (q17); committed 18.0%/18.7% used the 37.6 GB/s basis | VERDICT: H5 RED (kernel-attributed, not host-quota: cgroup v1 cfs_quota -1, 0 throttle events, cpuset 0-1; bare-metal re-run would not flip it — re-open needs per-thread load throughput per ADR-0012) | evidence: results/gram-bench-mt-study.json
+
+### 2026-11-26 machine/avx512-probe | measured | - | predicted: AVX-512 material only if zmm/ymm FMA ratio > 1.4 and 64B loads move more bytes per load-uop | measured: zmm 93.59 vs ymm 50.84 GFLOP/s (ratio 1.84); L1 load 145.96 vs 118.84 GB/s (ratio 1.23); dram_1t 21.39, dram_2t 26.39 GB/s; p*_avx512 34.0 vs committed 23.4 (38.6 anchored to machine.json's 18.89 GB/s) | VERDICT: triage: see docs/reports/stretch-triage.md + results/avx512-probe.json | evidence: results/avx512-probe.json

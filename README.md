@@ -54,8 +54,8 @@ evidence in docs/adr/0005 and docs/perf-log.md.
   load-port/issue-bound on this host (measured ~1.15 ymm-load-uops/cy),
   so the 85%-of-DRAM clause is unreachable regardless of kernel tuning
   (v1 2% -> v3 20% -> v4 20%). First ols_gram_mt measurements: 18.0-18.7%
-  of all-thread BW (H5 RED on this 2-vCPU host). 8-bug bring-up log in
-  ADR-0012 (the xmm8/ymm8 aliasing class struck twice more).
+  of all-thread BW (H5 RED, kernel-attributed; see the H5 row). 8-bug
+  bring-up log in ADR-0012 (the xmm8/ymm8 aliasing class struck twice more).
 - **Phase 9 (2026-11-26): G4 closure + fuzzer + freestanding CLI.**
   The blanket "G4 green" claim in the phase-8 report was UNEARNED: three
   of its four clauses had no artifacts. All three built this session:
@@ -91,8 +91,8 @@ evidence in docs/adr/0005 and docs/perf-log.md.
   (committed copy was all-zero LRE — a stale artifact; regenerated green).
 - **G4 final grade (honest split)**: E2E clause GREEN; fuzz clause GREEN
   (after the 4 fixes); static-binary clause GREEN; thread-scaling clause
-  RED — it is the H5 verdict (18.0-18.7% of all-thread BW on this 2-vCPU
-  quota host; machinery verified, re-run on bare metal remains open).
+  RED — the H5 verdict: kernel-attributed, NOT host-quota (no CFS quota;
+  bare-metal would not flip it — see the H5 row and the mt study).
 
 ## Status (end of Phase 3, 2026-11-25)
 - CSNE refinement + ridge wired; AUTO = Gram+Cholesky (the CSNE study
@@ -116,7 +116,7 @@ evidence in docs/adr/0005 and docs/perf-log.md.
 | H2 | Hand-written asm within ~5% of well-written AVX2 intrinsics | **GREEN** | `results/ladder.json`: asm-v3 vs intrinsics(O2) = +3.4%/+3.2% at q=8 (within the 5% clause) and 2.1x-2.4x FASTER at q=17 (51.4-60.0 vs 24.0-24.8 ns/row). The value-is-control reading of PLAN holds. |
 | H3 | Dot2 accumulation costs <15% when memory-bound | **NOT BUILT** | Dot2 is a COULD-tier item, never built — no verdict. Recorded honestly rather than dropped. |
 | H4 | CSNE restores QR-like accuracy up to a measured kappa*; plain Gram+Cholesky fails near kappa ~ 1e8 | **CONFIRMED** | `results/accuracy/kappa-sweep.json` (+ plot): kappa* = 1e6 measured. |
-| H5 | N threads reach >= 85% of measured all-thread bandwidth | **RED (this host)** | `results/gram-bench-v4.json`: ols_gram_mt 2 threads = 6.76 GB/s (q=8) / 7.01 (q=17) vs 37.6 GB/s all-thread ceiling = 18.0-18.7%. 2-vCPU quota-capped KVM host; the rung is measured and committed for a bare-metal re-run. |
+| H5 | N threads reach >= 85% of measured all-thread bandwidth | **RED** | `results/gram-bench-v4.json` + `results/gram-bench-mt-study.json`: ols_gram_mt 2 threads = 6.76/7.01 GB/s = 18.0-18.7% on the committed 37.6 GB/s basis (re-measured 19.5-20.8% of 33.41 GB/s, p10-p90 17.2-23.4% — the DRAM denominator drifts run-to-run, so cite the basis). Kernel-attributed, NOT host-quota: no CFS quota exists (cpu.cfs_quota_us = -1, 0 throttle events; 2 CPUs visible via cpuset 0-1), and the per-thread shortfall is ~4x (kernel 3.58 GB/s/thread vs stream 17.74 achievable, target 14.20) — a bare-metal re-run would NOT flip it; what could is a kernel with more per-thread load throughput (ADR-0012 re-open conditions). mt machinery works: mt2/mt1 = 1.90x at q=8, 1.23x at q=17. |
 | H6 | 6x8 tile >= 70% of measured FMA peak in cache, q+1 > p* | **RED** | `results/gram-bench-v3.json` (and v4 re-run): q=32 (n=4096, L2) = 21-22 GFLOP/s = 36-37% of the measured 57.62 GFLOP/s FMA peak; q=65 = 28 GFLOP/s = 49-50%. p* = 23.4 (machine.json), so both cases are in the FMA-bound regime. |
 | G2 | Fused Gram >= 85% of measured applicable bandwidth | **RED, CLOSED** | ADR-0012: v1 2% -> v3 20-49% -> v4 20% of bound across three evidence-backed iterations; load-port/issue-bound on this host; re-open conditions named. |
 

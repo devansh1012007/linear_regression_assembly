@@ -23,7 +23,7 @@ no artifacts anywhere in the repo:
 | 1e7 x 16 E2E matches numpy pipeline within bounds | not run | **GREEN** (max rel slope diff 2.1e-13) |
 | fuzz clean for a fixed budget | no fuzzer existed | **GREEN** after 4 bug fixes |
 | static binary, no dynamic section, NX stack | no freestanding build | **GREEN** (112 KB, readelf-verified) |
-| thread scaling >= 85% of all-thread BW | = H5 | **RED** (18.0% / 18.7%, 2-vCPU quota host) |
+| thread scaling >= 85% of all-thread BW | = H5 | **RED** (18.0% / 18.7% committed basis; kernel-attributed — see addendum) |
 
 ## Delivered
 
@@ -102,10 +102,11 @@ no artifacts anywhere in the repo:
 
 - G0/G1/G3: green (unchanged). G2: RED, CLOSED with evidence (ADR-0012).
 - **G4: SPLIT** — E2E GREEN, fuzz GREEN, static-binary GREEN,
-  thread-scaling RED (= H5, host-bound). The blanket "G4 green" in the
-  phase-8 report was corrected (note added there).
+  thread-scaling RED (= H5, kernel-attributed per the addendum below). The
+  blanket "G4 green" in the phase-8 report was corrected (note added there).
 - H1-H6: verdicts unchanged from the session-8 correction (H1 RED,
-  H2 GREEN, H3 not built, H4 CONFIRMED, H5 RED host, H6 RED).
+  H2 GREEN, H3 not built, H4 CONFIRMED, H5 RED — attribution corrected
+  in the addendum below, H6 RED).
 - `make verify` ALL GREEN on a clean build; CI green on the PR.
 
 ## What I got wrong (this session's own list)
@@ -131,3 +132,35 @@ no artifacts anywhere in the repo:
 - tests/c/outnum_test.c
 - results/{e2e-1e7,fuzz-csv,binary-size}.json, results/plots/{roofline,thread-scaling,ladder}.png
 - results/nist-phase2.json (repaired), README, this report
+
+## Addendum (2026-11-26, post-merge mt study: H5 attribution corrected)
+
+A post-session measurement study (`results/gram-bench-mt-study.json`,
+`bench/kernels/gram_bench_mt_study.py`) falsified this report's H5
+attribution parenthetical, which read "2-vCPU quota host":
+
+1. **The "quota" framing is wrong.** The host runs cgroup v1 with
+   `cpu.cfs_quota_us = -1` (no CFS quota) and 0 throttle events; the
+   container is sized by CPU visibility — cpuset limits it to 2 CPUs
+   (`Cpus_allowed_list 0-1`). Residual run-to-run variance is
+   noisy-neighbor load, not throttling.
+2. **The gate is kernel-attributed, not host-attributed.** At the
+   re-measured 2-thread STREAM aggregate (33.41 GB/s), the 85% gate needs
+   28.39 GB/s aggregate = 14.20 GB/s per thread — physically reachable
+   per thread (a single stream thread demonstrably pulls 17.74 GB/s
+   median), but the kernel delivers only 3.58 GB/s per thread (q8 mt2:
+   7.16 GB/s = 20.8% of 33.41, p10-p90 18.8-23.4%; q17 mt2: 6.63 GB/s =
+   19.5%, p10-p90 17.2-21.8%) — a ~4x per-thread shortfall consistent
+   with ADR-0012's load-port/issue-bound kernel analysis.
+3. **The threading machinery works**: mt2/mt1 efficiency 1.90x at q=8
+   (spread 1.73-1.98), 1.23x at q=17.
+4. **The mt2 medians reproduce the committed single shots** (6.76/7.01
+   GB/s) within error bars; the DRAM denominator itself drifts
+   run-to-run (committed 37.6 vs 33.41 GB/s today, 29.3-37.6 within the
+   run) — the committed 18.0%/18.7% figures used the older 37.6
+   denominator; both are valid when the basis is stated.
+
+Consequence: a bare-metal re-run would NOT flip the verdict (the
+per-thread shortfall is kernel-intrinsic); what could flip it is a kernel
+with more per-thread load throughput (ADR-0012's re-open conditions).
+H5 verdict STAYS RED.
