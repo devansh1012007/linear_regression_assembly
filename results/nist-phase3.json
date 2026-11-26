@@ -1,0 +1,198 @@
+{
+ "schema": 1,
+ "methods": [
+  "gram_chol",
+  "gram_csne",
+  "qr"
+ ],
+ "gates": {
+  "qr": {
+   "Norris": 10.0,
+   "Pontius": 10.0,
+   "NoInt1": 10.0,
+   "NoInt2": 10.0,
+   "Longley": 6.0,
+   "Wampler1": 6.0,
+   "Wampler2": 6.0,
+   "Wampler3": 6.0
+  },
+  "gram_csne": {
+   "Norris": 9.0,
+   "Pontius": 9.0,
+   "NoInt1": 9.0,
+   "NoInt2": 9.0,
+   "Longley": 9.0
+  },
+  "gram_chol": {}
+ },
+ "note": "Filip/Wampler4-5 reported without a target (PLAN G3)",
+ "rows": [
+  {
+   "dataset": "Norris",
+   "n": 36,
+   "p": 1,
+   "lre": {
+    "gram_chol": 12.219763809157872,
+    "gram_csne": 13.674456258397349,
+    "qr": 12.15660083946732
+   },
+   "rc": {
+    "gram_chol": 0,
+    "gram_csne": 0,
+    "qr": 0
+   }
+  },
+  {
+   "dataset": "Pontius",
+   "n": 40,
+   "p": 2,
+   "lre": {
+    "gram_chol": 11.977161077248624,
+    "gram_csne": 13.015118497604885,
+    "qr": 11.977161077248624
+   },
+   "rc": {
+    "gram_chol": 0,
+    "gram_csne": 0,
+    "qr": 0
+   }
+  },
+  {
+   "dataset": "NoInt1",
+   "n": 11,
+   "p": 1,
+   "lre": {
+    "gram_chol": 14.715175620588305,
+    "gram_csne": 14.715175620588305,
+    "qr": 14.715175620588305
+   },
+   "rc": {
+    "gram_chol": 0,
+    "gram_csne": 0,
+    "qr": 0
+   }
+  },
+  {
+   "dataset": "NoInt2",
+   "n": 3,
+   "p": 1,
+   "lre": {
+    "gram_chol": 15.0,
+    "gram_csne": 15.0,
+    "qr": 15.0
+   },
+   "rc": {
+    "gram_chol": 0,
+    "gram_csne": 0,
+    "qr": 0
+   }
+  },
+  {
+   "dataset": "Longley",
+   "n": 16,
+   "p": 6,
+   "lre": {
+    "gram_chol": 11.724663277003016,
+    "gram_csne": 11.35754904309802,
+    "qr": 13.102273945184097
+   },
+   "rc": {
+    "gram_chol": 0,
+    "gram_csne": 0,
+    "qr": 0
+   }
+  },
+  {
+   "dataset": "Wampler1",
+   "n": 21,
+   "p": 5,
+   "lre": {
+    "gram_chol": 7.395056800300998,
+    "gram_csne": 10.91145157517787,
+    "qr": 9.632959861247398
+   },
+   "rc": {
+    "gram_chol": 0,
+    "gram_csne": 0,
+    "qr": 0
+   }
+  },
+  {
+   "dataset": "Wampler2",
+   "n": 21,
+   "p": 5,
+   "lre": {
+    "gram_chol": 10.104289425713132,
+    "gram_csne": 13.232495967007846,
+    "qr": 12.89300771952469
+   },
+   "rc": {
+    "gram_chol": 0,
+    "gram_csne": 0,
+    "qr": 0
+   }
+  },
+  {
+   "dataset": "Wampler3",
+   "n": 21,
+   "p": 5,
+   "lre": {
+    "gram_chol": 7.395056800300998,
+    "gram_csne": 10.892098038349262,
+    "qr": 9.088891816897123
+   },
+   "rc": {
+    "gram_chol": 0,
+    "gram_csne": 0,
+    "qr": 0
+   }
+  },
+  {
+   "dataset": "Wampler4",
+   "n": 21,
+   "p": 5,
+   "lre": {
+    "gram_chol": 7.395056800300998,
+    "gram_csne": 7.957844158635731,
+    "qr": 7.732014566544824
+   },
+   "rc": {
+    "gram_chol": 0,
+    "gram_csne": 0,
+    "qr": 0
+   }
+  },
+  {
+   "dataset": "Wampler5",
+   "n": 21,
+   "p": 5,
+   "lre": {
+    "gram_chol": 6.392141449116235,
+    "gram_csne": 6.100446240080418,
+    "qr": 5.725734348892829
+   },
+   "rc": {
+    "gram_chol": 0,
+    "gram_csne": 0,
+    "qr": 0
+   }
+  },
+  {
+   "dataset": "Filip",
+   "n": 82,
+   "p": 10,
+   "lre": {
+    "gram_chol": null,
+    "gram_csne": null,
+    "qr": null,
+    "qr_forced": null
+   },
+   "rc": {
+    "gram_chol": -7,
+    "gram_csne": -7,
+    "qr": -7,
+    "qr_forced": -7
+   }
+  }
+ ]
+}

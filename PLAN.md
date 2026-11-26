@@ -62,6 +62,28 @@ Tasks: packing/padding; fused pass with pivot shift; scalar SSE2 reference kerne
 Tasks: residual + X'r fused pass; CSNE; Householder/TSQR on `[X y]` (SSE = rho^2); column pivoting + rank; ridge, weights; `auto` selection; kappa-sweep study (error vs kappa, per method, zero- and large-residual); full NIST table per method.
 **Gate G3:** NIST targets **[pre-registered]**: QR >= 10 LRE on Norris/Pontius/NoInt1/NoInt2 and >= 6 on Longley and Wampler1-3; Gram+CSNE >= 9 on the lower/average set; Filip and Wampler4-5 reported without a target. kappa* for CSNE measured and `auto` thresholds derived from data. Error-bound tests use recorded constants.
 
+### Phase 3 — execution checklist (session 3; elaborates the block above)
+
+Session-3 audit findings that shape this checklist (verified at HEAD `210f08c`, not assumed):
+- **API truth bugs**: `OLS_GRAM_CSNE` accepted but aliased to plain Cholesky (no refinement code exists); `problem.lambda` accepted but ignored; `ols_abi_offsets()` declared in `ols.h` and cited by the drift-test docstring but **not exported** from the library; `ols_cpu_ident` exported but undeclared in the header; `ADR-0006` cited in `ols.h` but never written; `ols.h` cites `tests/py/struct_check.py` (the real check lives in `tests/py/test_phase2.py`).
+- **Mutation debt** (session-1 comms, still open): no vzeroupper/upper-half discipline check; SSE2-axpy tail case missing.
+
+Order follows the house workflow (reference first, scalar asm before any vectorization; the QR kernel is SSE2-scalar this phase — its performance story belongs to the Phase-5 baseline ladder, but the perf-log prediction is still written before any measurement). Estimates in focused hours; total ≈ 15.
+
+- [x] **P3.0** This checklist + ADR-0006 (result v3 / `ols_abi_offsets` repair) + ADR-0007 (QR scope: Householder on an explicit copy, no pivoting v1) + comms entry. (0.5)
+- [ ] **P3.1 API truth**: export a real `ols_abi_offsets` (FNV-1a over the frozen offset table, the `8513e04` design that never landed); drift test consumes the export and fails on any drift; declare `ols_cpu_ident`; fix the stale header references. (0.5)
+- [ ] **P3.2 Result v3** (96 → 104 bytes, append-only: `f_stat` at 96, zeroed on error): offsets in `abi.inc` + `ols.h` + both ctypes mirrors; `f_stat` fill in the fit.asm stats block — F = (sst − sse)/sse · (n − q)/p, using the stored `sst` (centered with intercept, raw without — same convention as r2); SciPy differential on random + NIST problems. (1.5)
+- [ ] **P3.3 Solver honesty**: (a) **CSNE** — two fixed-point refinement steps via the existing residual pass: d = C⁻¹·X'r, b += d (all existing kernels; orchestration in fit.asm). Gate: recovers ≥ 12 LRE vs mpmath on κ=1e4 problems where plain chol measures ~7. (b) **ridge** — wire `lambda` into the Gram p-block (G_jj += λ, j < p; intercept never penalized), differential vs an mpmath ridge reference. (c) both reflected truthfully in `method_used`. (2)
+- [ ] **P3.4 `ols_predict`**: asm kernel (n×p matvec + b0, compensated), differential vs numpy, guard + probe. (1)
+- [ ] **P3.5 `qr.asm`**: mpmath Householder-QR reference in `tests/ref/ols_ref.py` FIRST; then asm: explicit workspace copy of A = [1|X|y] (q = p+1 cols), factor (Householder, reflected β choice for stability), R-solve, se via the inv(R) diagonal recursion, sse byproduct (last ρ²); differentials (beta, sse, se) across the shape matrix; guard pages + ABI probe; perf-log prediction before measurement. (4)
+- [ ] **P3.6 Wire `OLS_QR`** into `ols_fit`: dispatch, `rcond` → rank(R) check (R_jj ≤ rcond·R_00 → `OLS_E_ILLCOND` with rank filled; rank < p → `OLS_E_SINGULAR`), se from R, sse byproduct, f_stat. `OLS_QR_PIVOT` stays `OLS_E_ARG` (ADR-0007). (2)
+- [ ] **P3.7 Kappa sweep**: κ ∈ {1e1..1e8} × {zero, large} residual × {CHOL, CSNE, QR} vs mpmath → `results/accuracy/kappa-sweep.json` + plot; **H4 verdict**: κ* where CSNE drops > 1 digit below QR; `OLS_AUTO` rule derived from that data (cond_est threshold), implemented + tested. (1.5)
+- [ ] **P3.8 NIST per-method table**: 9 datasets (download official Wampler4/5) × {CHOL, CSNE, QR} → `results/nist-phase3.json` + README table regenerated from it. Gates as pre-registered above. (1)
+- [ ] **P3.9 Mutation debt**: vzeroupper/upper-half discipline check (small C helper per asm-verification §2b) + SSE2-axpy tail in the mutation suite; rerun; survivors re-analyzed. (1)
+- [ ] **P3.10 Docs + gate**: `docs/design.md` (cited by AGENTS.md, missing), `docs/reports/phase3-accuracy.md`, README status/tables; `make verify` green; G3 self-check item by item. (1)
+
+Cut order if time runs short: P3.4 predict (caller can matvec) → P3.3b ridge → P3.9 mutation → P3.7 plot polish. Never cut: the CSNE honesty fix, QR + differentials, the per-method NIST table, G3 evidence.
+
 ### Phase 4 — Systems: threads, I/O, CLI (4 d)
 Tasks: row-partitioned threading (pthreads build), fixed-order merge, reproducible mode (bitwise equal for 1..N threads); `.olsb` + CSV (Clinger fast path), `to_olsb.py`; freestanding `_start` CLI with raw syscalls; exit codes; parser fuzzing.
 **Gate G4:** end-to-end on a 1e7 x 16 file matches the NumPy pipeline within bounds; thread scaling reaches >= 85% of measured all-thread bandwidth **[pre-registered]**; fuzz runs clean for a fixed budget; static binary has no dynamic section and a non-executable stack.

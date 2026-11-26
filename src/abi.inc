@@ -68,7 +68,7 @@
 %define PRB_THREADS           80      ; u32
 %define PRB_SIZEOF            88
 
-; ---- ols_result_t field offsets (FROZEN; verified by struct_check.py) ----------
+; ---- ols_result_t field offsets (FROZEN; verified by the drift test) ----------
 %define RES_BETA              0       ; double*
 %define RES_INTERCEPT         8
 %define RES_SSE               16
@@ -82,8 +82,13 @@
 %define RES_METHOD_USED       76      ; i32
 %define RES_ISA_USED          80      ; i32
 %define RES_PAD               84      ; i32
-%define RES_T                 88      ; double*
-%define RES_SIZEOF            96
+%define RES_T                 88      ; double* (v2)
+%define RES_F_STAT            96      ; double  (v3; ADR-0006)
+%define RES_SIZEOF            104     ; v3 (v2 was 96)
+
+; ---- ABI version + table marker (api.asm / drift test; ADR-0006) --------------
+; 1 = phase-2 problem/result v1, 2 = result v2 (t), 3 = result v3 (f_stat).
+%define OLS_ABI_VERSION       3
 
 ; ---- ISA ids (must match include/ols.h) ---------------------------------------
 %define OLS_ISA_SSE2          0
@@ -135,4 +140,33 @@
 %define RA_B0                  48
 %define RA_BETA                56
 %define RA_SSE                 64
-%define RA_XTR                 72
+%define RA_XTR                 72      ; p doubles of X'r (CSNE refinement)
+%define RA_RSUM                80      ; double* sum w_i r_i (NULL = skip; v3)
+%define RA_SIZEOF              88      ; v3 (v2 was 80)
+
+; ---- ols_pred_args_t offsets (include/ols.h) ----------------------------------
+%define PA_X                  0
+%define PA_LDX8               8
+%define PA_BETA               16
+%define PA_B0                 24
+%define PA_N                  32
+%define PA_P                  40
+%define PA_OUT                48
+%define PA_SIZEOF             56
+
+; ---- ols_qr_args_t offsets (include/ols.h) ------------------------------------
+%define QA_X                  0
+%define QA_LDX8               8
+%define QA_Y                  16
+%define QA_W                  24
+%define QA_N                  32
+%define QA_P                  40
+%define QA_C                  48
+%define QA_AUG                56
+%define QA_S                  64
+%define QA_WOUT               72
+%define QA_SST                80
+%define QA_NORMS              88
+%define QA_WORK               96
+%define QA_INTERCEPT          104
+%define QA_SIZEOF             112

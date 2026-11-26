@@ -49,19 +49,51 @@ def lint_file(path: Path) -> list[str]:
     return errors
 
 
+def lint_vzeroupper(path: Path) -> list[str]:
+    """Discipline check (asm-verification 2b, mutation survivor fix): any
+    function body that touches ymm registers must contain vzeroupper before
+    returning — an AVX kernel leaving the upper half dirty stalls subsequent
+    SSE code. The mutation runner lints the mutated file, so a dropped
+    vzeroupper is a killed mutant, not a silent survivor."""
+    errors = []
+    text = path.read_text()
+    lines = text.splitlines()
+    # split into function bodies at global/section boundaries
+    starts = [i for i, ln in enumerate(lines)
+              if re.match(r"^\s*global\s", ln) or re.match(r"^section\b", ln)]
+    starts.append(len(lines))
+    for a, b in zip(starts, starts[1:]):
+        body = lines[a:b]
+        if not any(re.search(r"\bymm\d+", ln) for ln in body):
+            continue
+        if not any("vzeroupper" in ln for ln in body):
+            errors.append(f"{path}:{a+1}: function body uses ymm without "
+                          f"vzeroupper (upper-half discipline)")
+    return errors
+
+
 def check_purity() -> list[str]:
+    # src/thread/ is the ONE sanctioned exception: the Phase-4c pthread
+    # orchestration layer (ADR-0008) — the numerical core stays pure asm.
     errors = []
     for p in (ROOT / "src").rglob("*"):
-        if p.is_file() and p.suffix not in (".asm", ".inc"):
+        if (p.is_file() and p.suffix not in (".asm", ".inc")
+                and "src/thread/" not in p.as_posix()):
             errors.append(f"src/ purity: non-asm source {p}")
     return errors
 
 
 def main() -> int:
-    targets = list((ROOT / "src").rglob("*.asm"))
+    file_args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if file_args:
+        # lint specific files (the mutation runner lints mutated copies)
+        targets = [Path(a) for a in file_args]
+    else:
+        targets = list((ROOT / "src").rglob("*.asm"))
     errors = []
     for t in targets:
         errors += lint_file(t)
+        errors += lint_vzeroupper(t)
     if "--check-src" in sys.argv:
         errors += check_purity()
     if errors:

@@ -1,0 +1,255 @@
+{
+ "schema": 1,
+ "what": "kappa sweep: cond2(X)=kappa exactly, three solvers vs mpmath",
+ "config": {
+  "n": 60,
+  "p": 6,
+  "kappas": [
+   10.0,
+   100.0,
+   1000.0,
+   10000.0,
+   100000.0,
+   1000000.0,
+   10000000.0,
+   100000000.0
+  ],
+  "residuals": [
+   "none",
+   "large"
+  ],
+  "intercept": false,
+  "seed": 77
+ },
+ "rows": [
+  {
+   "kappa": 10.0,
+   "residual": "none",
+   "cond_est": {
+    "gram_chol": 11.370501271757101,
+    "gram_csne": 11.370501271757101,
+    "qr": 4.643945984289376
+   },
+   "lre": {
+    "gram_chol": 13.744803309694198,
+    "gram_csne": 15.0,
+    "qr": 14.584700156022647
+   }
+  },
+  {
+   "kappa": 10.0,
+   "residual": "large",
+   "cond_est": {
+    "gram_chol": 11.370501271757101,
+    "gram_csne": 11.370501271757101,
+    "qr": 4.643945984289376
+   },
+   "lre": {
+    "gram_chol": 13.964911406857015,
+    "gram_csne": 15.0,
+    "qr": 14.549938058886198
+   }
+  },
+  {
+   "kappa": 100.0,
+   "residual": "none",
+   "cond_est": {
+    "gram_chol": 814.6106824922947,
+    "gram_csne": 814.6106824922947,
+    "qr": 106.3180473785301
+   },
+   "lre": {
+    "gram_chol": 12.42510372183779,
+    "gram_csne": 14.341662107336353,
+    "qr": 14.341662107336353
+   }
+  },
+  {
+   "kappa": 100.0,
+   "residual": "large",
+   "cond_est": {
+    "gram_chol": 814.6106824922947,
+    "gram_csne": 814.6106824922947,
+    "qr": 106.3180473785301
+   },
+   "lre": {
+    "gram_chol": 11.80252632813251,
+    "gram_csne": 14.232517724166781,
+    "qr": 13.520866688071674
+   }
+  },
+  {
+   "kappa": 1000.0,
+   "residual": "none",
+   "cond_est": {
+    "gram_chol": 63060.52880270311,
+    "gram_csne": 63060.52880270311,
+    "qr": 4103.109322433603
+   },
+   "lre": {
+    "gram_chol": 9.771919335096726,
+    "gram_csne": 13.844337466528357,
+    "qr": 13.505518909974976
+   }
+  },
+  {
+   "kappa": 1000.0,
+   "residual": "large",
+   "cond_est": {
+    "gram_chol": 63060.52880270311,
+    "gram_csne": 63060.52880270311,
+    "qr": 4103.109322433603
+   },
+   "lre": {
+    "gram_chol": 9.9346493549451,
+    "gram_csne": 13.900454206817868,
+    "qr": 13.102780816731748
+   }
+  },
+  {
+   "kappa": 10000.0,
+   "residual": "none",
+   "cond_est": {
+    "gram_chol": 4116205.163843193,
+    "gram_csne": 4116205.163843193,
+    "qr": 221872.57981001565
+   },
+   "lre": {
+    "gram_chol": 7.650457260415771,
+    "gram_csne": 12.603561373381796,
+    "qr": 12.341662107336163
+   }
+  },
+  {
+   "kappa": 10000.0,
+   "residual": "large",
+   "cond_est": {
+    "gram_chol": 4116205.163843193,
+    "gram_csne": 4116205.163843193,
+    "qr": 221872.57981001565
+   },
+   "lre": {
+    "gram_chol": 7.570002390522898,
+    "gram_csne": 12.308246136864668,
+    "qr": 11.877350706587734
+   }
+  },
+  {
+   "kappa": 100000.0,
+   "residual": "none",
+   "cond_est": {
+    "gram_chol": 218711128.4412948,
+    "gram_csne": 218711128.4412948,
+    "qr": 15666142.561535144
+   },
+   "lre": {
+    "gram_chol": 6.673572191335505,
+    "gram_csne": 12.092405498388723,
+    "qr": 10.938566109410147
+   }
+  },
+  {
+   "kappa": 100000.0,
+   "residual": "large",
+   "cond_est": {
+    "gram_chol": 218711128.4412948,
+    "gram_csne": 218711128.4412948,
+    "qr": 15666142.561535144
+   },
+   "lre": {
+    "gram_chol": 6.002511230648696,
+    "gram_csne": 12.929321649537084,
+    "qr": 11.356014372947087
+   }
+  },
+  {
+   "kappa": 1000000.0,
+   "residual": "none",
+   "cond_est": {
+    "gram_chol": 9827928413.739939,
+    "gram_csne": 9827928413.739939,
+    "qr": 1321797771.724688
+   },
+   "lre": {
+    "gram_chol": 3.462172075046366,
+    "gram_csne": 10.913542746936551,
+    "qr": 9.739511647419109
+   }
+  },
+  {
+   "kappa": 1000000.0,
+   "residual": "large",
+   "cond_est": {
+    "gram_chol": 9827928413.739939,
+    "gram_csne": 9827928413.739939,
+    "qr": 1321797771.724688
+   },
+   "lre": {
+    "gram_chol": 3.366310777411086,
+    "gram_csne": 10.882318862775183,
+    "qr": 9.923317096427297
+   }
+  },
+  {
+   "kappa": 10000000.0,
+   "residual": "none",
+   "cond_est": {
+    "gram_chol": 389627394316.9734,
+    "gram_csne": 389627394316.9734,
+    "qr": 122571943318.2417
+   },
+   "lre": {
+    "gram_chol": 2.6371286089181147,
+    "gram_csne": 7.577212997200809,
+    "qr": 9.352581987028927
+   }
+  },
+  {
+   "kappa": 10000000.0,
+   "residual": "large",
+   "cond_est": {
+    "gram_chol": 389627394316.9734,
+    "gram_csne": 389627394316.9734,
+    "qr": 122571943318.2417
+   },
+   "lre": {
+    "gram_chol": 1.7123778035819421,
+    "gram_csne": 6.654281201068251,
+    "qr": 10.001200644407799
+   }
+  },
+  {
+   "kappa": 100000000.0,
+   "residual": "none",
+   "cond_est": {
+    "gram_chol": 36898038809524.586,
+    "gram_csne": 36898038809524.586,
+    "qr": 10584252943291.412
+   },
+   "lre": {
+    "gram_chol": 0.0,
+    "gram_csne": 0.0,
+    "qr": 7.962269788480046
+   }
+  },
+  {
+   "kappa": 100000000.0,
+   "residual": "large",
+   "cond_est": {
+    "gram_chol": 36898038809524.586,
+    "gram_csne": 36898038809524.586,
+    "qr": 10584252943291.412
+   },
+   "lre": {
+    "gram_chol": 0.0,
+    "gram_csne": 0.0,
+    "qr": 7.591150557061456
+   }
+  }
+ ],
+ "h4_verdict": {
+  "kappa_star_csne": 1000000.0,
+  "chol_failure_floor": 10000.0,
+  "statement": "CSNE stays within 1 digit of QR up to kappa*; plain Gram+Cholesky drops below 9 LRE at kappa=10000.0 \u2014 consistent with H4's prediction that normal equations lose 2*log10(kappa) digits"
+ }
+}

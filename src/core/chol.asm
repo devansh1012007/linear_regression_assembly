@@ -197,6 +197,11 @@ ols_chol_f64_sse2:
 ;                                 size_t stride)
 ; Args    : rdi = R, rsi = q, rdx = b, rcx = stride (doubles, 0 -> q)
 ; Returns : eax = OLS_OK | OLS_E_SINGULAR (zero/NaN diag)
+; Memory  : reads R upper; reads/writes b[0..q).
+; Clobbers: caller-saved + rbx,rbp,r12-r15 (pushed/popped).
+; ==============================================================================
+; Args    : rdi = R, rsi = q, rdx = b, rcx = stride (doubles, 0 -> q)
+; Returns : eax = OLS_OK | OLS_E_SINGULAR (zero/NaN diag)
 ; Requires: SSE2; R's upper triangle holds the factor.
 ; Memory  : reads R upper; reads/writes b[0..q).
 ; Clobbers: caller-saved + rbx,rbp,r12-r15 (pushed/popped), xmm0-xmm15.
@@ -309,6 +314,14 @@ ols_chol_solve_f64_sse2:
 ; ==============================================================================
 ; int32_t ols_chol_inv_f64_sse2(const double *A, size_t q, double *B,
 ;                               size_t stride)
+; Args    : rdi = A (R in upper triangle), rsi = q, rdx = B_out, rcx = stride
+; Returns : eax = OLS_OK | OLS_E_SINGULAR
+; Memory  : reads A upper; writes B[0..q*q) CONTIGUOUS (B is always dense).
+;           Frame: v buffer at [rsp+32), q doubles, allocated dynamically.
+; Clobbers: caller-saved + rbx,rbp,r12-r15 (pushed/popped).
+; Numerics: column j: R'w = e_j, Rv = w, B[:,j] = v (plain dots; the inverse's
+;           conditioning is reported via cond_est by the caller).
+; ==============================================================================
 ; Args    : rdi = A (R in upper triangle), rsi = q, rdx = B_out, rcx = stride
 ; Returns : eax = OLS_OK | OLS_E_SINGULAR
 ; Requires: SSE2; B_out must not alias A; A's upper triangle holds R.

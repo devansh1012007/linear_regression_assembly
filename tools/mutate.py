@@ -35,20 +35,22 @@ def run(cmd, **kw):
 
 
 def build_lib(objects, out):
-    """Assemble the mutated file + link the .so with the rest."""
+    """Link the mutated library against the CURRENT build/lib objects (the
+    2025-11 review moved production objects there; the old build/cpu.o
+    paths made EVERY mutant fail to link — the phase-1 "killed (link fail)"
+    kills were fake, found by the P3.9 rerun when the score looked too
+    good). The mutated file's fresh object replaces its build/lib one."""
     objs = []
-    for t in TARGETS:
-        if str(t) in objects:
-            src, obj = objects[str(t)]
+    for src in sorted((ROOT / "build" / "lib").glob("*.o")):
+        if src.stem in objects:
+            objs.append(str(objects[src.stem][1]))
         else:
-            obj = SCRATCH / (Path(t).stem + ".o")
-            r = run(["nasm", "-f", "elf64", "-I.", "-o", str(obj), t])
-            if r.returncode != 0:
-                return False
-        objs.append(obj)
+            objs.append(str(src))
+    if not objs:
+        return False
     r = run(["gcc", "-O2", "-std=c11", "-fPIC", "-shared", "-o", str(out),
-             *[str(o) for o in objs], "build/cpu.o", "build/dispatch.o",
-             "build/abi_probe.o", "tests/abi/abi_adapters.c", "-Iinclude"])
+             *objs, str(ROOT / "build" / "tests" / "abi_probe.o"),
+             str(ROOT / "tests" / "abi" / "abi_adapters.c"), "-Iinclude"])
     return r.returncode == 0
 
 
@@ -118,6 +120,18 @@ def main():
             n_total += 1
             mpath = SCRATCH / (Path(target).name)
             mpath.write_text(mutated)
+            # contract lint first (cheap): a mutation that breaks a
+            # contract-header or the vzeroupper discipline is killed here —
+            # closes the 2026-11-21 survivor class "vzeroupper dropped"
+            rl = run(["python3", str(ROOT / "tools" / "lint_contracts.py"),
+                      str(mpath)])
+            if rl.returncode != 0:
+                n_killed += 1
+                n_total += 1
+                results.append({"target": str(target), "mutation": desc,
+                                "outcome": "killed (contract lint)"})
+                print(f"KILLED  {target}:{desc} [lint]", flush=True)
+                continue
             obj = SCRATCH / (Path(target).stem + "mut.o")
             r = run(["nasm", "-f", "elf64", "-I.", "-o", str(obj), str(mpath)])
             if r.returncode != 0:
@@ -126,7 +140,7 @@ def main():
                 results.append({"target": str(target), "mutation": desc,
                                 "outcome": "killed (build fail)"})
                 continue
-            ok = build_lib({str(target): (str(mpath), obj)}, so)
+            ok = build_lib({Path(target).stem: (str(mpath), obj)}, so)
             if not ok:
                 n_killed += 1
                 results.append({"target": str(target), "mutation": desc,
@@ -154,7 +168,9 @@ def main():
         "results": results,
     }
     (ROOT / "results").mkdir(exist_ok=True)
-    (ROOT / "results" / "mutation-phase1.json").write_text(json.dumps(summary, indent=2) + "\n")
+    out_name = ("mutation-phase3.json" if "PHASE3" in __import__("os").environ
+                else "mutation-phase1.json")
+    (ROOT / "results" / out_name).write_text(json.dumps(summary, indent=2) + "\n")
     print(f"\nmutation score: {n_killed}/{n_total} = {summary['mutation_score']}")
     return 0 if n_equiv == 0 else 1
 

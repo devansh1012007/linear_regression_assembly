@@ -28,7 +28,8 @@ class Result(C.Structure):
                 ("cond_est", C.c_double), ("se", C.c_void_p),
                 ("rank", C.c_int32), ("method_used", C.c_int32),
                 ("isa_used", C.c_int32), ("_pad", C.c_int32),
-                ("t", C.c_void_p)]      # v2 append-only: size 96
+                ("t", C.c_void_p),
+                ("f_stat", C.c_double)]  # v3 append-only: size 104 (ADR-0006)
 
 ols.ols_fit.restype = C.c_int32
 ols.ols_fit.argtypes = [C.POINTER(Problem), C.POINTER(Result), C.c_void_p, C.c_size_t]
@@ -39,9 +40,12 @@ OLS_FIT_INTERCEPT = 1
 OLS_FIT_SKIP_STATS = 8
 OLS_AUTO = 0
 OLS_GRAM_CHOL = 1
+OLS_GRAM_CSNE = 2
+OLS_QR = 3
 
 
-def fit(X, y, w=None, intercept=True, method=OLS_AUTO, stats=True):
+def fit(X, y, w=None, intercept=True, method=OLS_AUTO, stats=True,
+        lambda_=0.0, rcond=0.0):
     X = np.ascontiguousarray(X, dtype=np.float64)
     y = np.ascontiguousarray(y, dtype=np.float64)
     n, p = X.shape
@@ -52,9 +56,9 @@ def fit(X, y, w=None, intercept=True, method=OLS_AUTO, stats=True):
                    w.ctypes.data if w is not None else 0, n, p, X.shape[1],
                    method, (OLS_FIT_INTERCEPT if intercept else 0) |
                    (0 if stats else OLS_FIT_SKIP_STATS),
-                   0.0, 0.0, 1, 0)
+                   lambda_, rcond, 1, 0)
     res = Result(beta.ctypes.data, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                 se.ctypes.data, -1, 0, 0, 0, t.ctypes.data)
+                 se.ctypes.data, -1, 0, 0, 0, t.ctypes.data, 0.0)
     ws_bytes = ols.ols_workspace_size(n, p, method, prob.flags)
     ws = np.zeros(max(ws_bytes // 8, 1), dtype=np.float64)
     rc = ols.ols_fit(C.byref(prob), C.byref(res), ws.ctypes.data, ws_bytes)
@@ -63,6 +67,7 @@ def fit(X, y, w=None, intercept=True, method=OLS_AUTO, stats=True):
         "sse": res.sse, "sst": res.sst, "r2": res.r2, "r2_adj": res.r2_adj,
         "sigma2": res.sigma2, "cond_est": res.cond_est,
         "se": se.copy(), "t": t.copy(), "rank": res.rank,
+        "f_stat": res.f_stat,
         "method_used": res.method_used, "isa_used": res.isa_used,
     }
     return out
@@ -140,6 +145,119 @@ def main():
         if not np.allclose(bb, rb, rtol=1e-6, atol=1e-6):
             print(f"FAIL weighted p={p}: maxdiff {np.abs(bb - rb).max():.3e}")
             fails += 1
+    # no-intercept F: dof = n - p (no intercept), sst is the raw y'y.
+    # Pins the f_stat dof fix (the first draft used n - q = n - p - 1).
+    pn, nn = 3, 50
+    Xn = rng.standard_normal((nn, pn))
+    yn = Xn @ rng.standard_normal(pn) + 0.3 * rng.standard_normal(nn)
+    outn = fit(Xn, yn, intercept=False)
+    if outn["rc"] != 0:
+        print(f"FAIL f_stat no-intercept rc={outn['rc']}")
+        fails += 1
+    else:
+        rn = yn - Xn @ outn["beta"]
+        sstn = float(yn @ yn)
+        ssen = float(rn @ rn)
+        F_true_n = ((sstn - ssen) / pn) / (ssen / (nn - pn))
+        if abs(outn["f_stat"] - F_true_n) > 1e-9 * max(1.0, F_true_n):
+            print(f"FAIL f_stat no-intercept: {outn['f_stat']:.6g} "
+                  f"vs {F_true_n:.6g}")
+            fails += 1
+    # ---- CSNE refinement (P3.3): kappa=1e4 zero-residual problem ----
+    # Pre-registered gate (PLAN.md Phase 3): the refined fit recovers >= 12
+    # LRE vs mpmath where plain chol measures ~7 (kappa^2*u ~ 2e-8 there).
+    pk, nk = 5, 200
+    Xk, yk, _, _ = R.make_kappa_problem(nk, pk, 1e4, seed=77)
+    refk = R.mp_solve(Xk, yk, intercept=False)
+    out_c = fit(Xk, yk, intercept=False, method=OLS_GRAM_CHOL)
+    out_s = fit(Xk, yk, intercept=False, method=OLS_GRAM_CSNE)
+    if out_c["rc"] != 0 or out_s["rc"] != 0:
+        print(f"FAIL csne rc: chol={out_c['rc']} csne={out_s['rc']}")
+        fails += 1
+    else:
+        lre_c = min(R.lre(float(b), float(r))
+                    for b, r in zip(out_c["beta"], refk["b"]))
+        lre_s = min(R.lre(float(b), float(r))
+                    for b, r in zip(out_s["beta"], refk["b"]))
+        print(f"CSNE gate at kappa=1e4: chol {lre_c:.1f} LRE -> "
+              f"csne {lre_s:.1f} LRE")
+        if lre_s < 12.0:
+            print(f"FAIL csne gate: {lre_s:.2f} < 12 (chol {lre_c:.2f})")
+            fails += 1
+        if out_s["method_used"] != OLS_GRAM_CSNE:
+            print(f"FAIL csne method_used: {out_s['method_used']}")
+            fails += 1
+        if out_c["method_used"] != OLS_GRAM_CHOL:
+            print(f"FAIL auto->chol method_used: {out_c['method_used']}")
+            fails += 1
+    # ---- ridge (P3.3b): lambda wiring vs mpmath (weighted + unweighted) ----
+    Xr = rng.standard_normal((60, 3))
+    yr = rng.standard_normal(60)
+    for lam, wv in ((0.5, None), (10.0, None),
+                    (2.0, rng.uniform(0.5, 2.0, 60))):
+        out = fit(Xr, yr, w=wv, lambda_=lam)
+        ref = R.mp_ridge(Xr, yr, lam, w=wv)
+        rb = np.array([float(ref["b0"])] + [float(v) for v in ref["b"]])
+        ab = np.r_[out["b0"], out["beta"]]
+        scale = max(1.0, np.abs(rb).max())
+        if out["rc"] != 0 or not np.allclose(ab, rb, rtol=1e-9,
+                                             atol=1e-9 * scale):
+            print(f"FAIL ridge lam={lam} w={wv is not None}: "
+                  f"maxdiff {np.abs(ab - rb).max():.3e}")
+            fails += 1
+    # ---- QR end-to-end (P3.6): ols_fit(method=OLS_QR) vs mp_qr_ols ----
+    rng3 = np.random.default_rng(91)
+    for intercept in (True, False):
+        n, p = 80, 4
+        Xq = rng3.standard_normal((n, p)) * 10.0 ** rng3.integers(-2, 3, p)
+        yq = 2.0 + Xq @ rng3.standard_normal(p) + 0.1 * rng3.standard_normal(n)
+        out = fit(Xq, yq, intercept=intercept, method=OLS_QR)
+        ref = R.mp_qr_ols(Xq, yq, intercept=intercept)
+        if out["rc"] != 0:
+            print(f"FAIL qr fit rc={out['rc']} int={intercept}")
+            fails += 1
+            continue
+        lre = min(R.lre(float(g), float(r))
+                  for g, r in zip(out["beta"], ref["beta"]))
+        if lre < 12.0:
+            print(f"FAIL qr beta int={intercept}: lre {lre:.1f} < 12")
+            fails += 1
+        if out["method_used"] != OLS_QR:
+            print(f"FAIL qr method_used: {out['method_used']}")
+            fails += 1
+        nse = p + (1 if intercept else 0)
+        se_ref = np.array([float(v) for v in ref["se"]])[:nse]
+        if not np.allclose(out["se"][:nse], se_ref, rtol=1e-6):
+            print(f"FAIL qr se int={intercept}: "
+                  f"maxdiff {np.abs(out['se'][:nse] - se_ref).max():.3e}")
+            fails += 1
+        A = np.hstack([np.ones((n, 1)), Xq]) if intercept else Xq
+        sse_np = float(((yq - A @ np.linalg.lstsq(A, yq, rcond=None)[0]) ** 2).sum())
+        if abs(out["sse"] - sse_np) > 1e-9 * max(1.0, sse_np):
+            print(f"FAIL qr sse int={intercept}: {out['sse']:.6g} vs {sse_np:.6g}")
+            fails += 1
+    # QR rank refusal: duplicate column with the default rcond
+    Xd = rng3.standard_normal((50, 3))
+    Xd[:, 2] = Xd[:, 0]
+    out = fit(Xd, rng3.standard_normal(50), intercept=True, method=OLS_QR)
+    if out["rc"] != -7:
+        print(f"FAIL qr singular refusal: rc={out['rc']} (want -7)")
+        fails += 1
+    # adversarial offset through QR (pivot-shifted build + ones column)
+    Xo = 1e9 + rng3.standard_normal((100, 2))
+    yo = 2.0 + Xo @ np.array([1.5, -2.0]) + 0.01 * rng3.standard_normal(100)
+    out = fit(Xo, yo, intercept=True, method=OLS_QR)
+    mp = R.mp_solve(Xo, yo, intercept=True)
+    rb = np.array([float(v) for v in mp["b"]])
+    bb = np.r_[out["b0"], out["beta"]]
+    if out["rc"] != 0 or not np.allclose(bb, rb, rtol=1e-6,
+                                         atol=1e-6 * np.abs(rb).max()):
+        print(f"FAIL qr offset1e9: rc={out['rc']} "
+              f"maxdiff {np.abs(bb - rb).max():.3e}")
+        fails += 1
+    else:
+        print(f"qr offset 1e9: agrees with mpmath "
+              f"(maxdiff {np.abs(bb - rb).max():.2e})")
     # adversarial offset: X = 1e9 + noise
     n, p = 200, 3
     X = 1e9 + rng.standard_normal((n, p))
@@ -201,13 +319,16 @@ def main():
         if abs(out["r2_adj"] - r2a) > 1e-10:
             print(f"FAIL r2_adj p={p}: {out['r2_adj']:.12f} vs {r2a:.12f}")
             fails += 1
+        if abs(out["f_stat"] - F_true) > 1e-9 * max(1.0, F_true):
+            print(f"FAIL f_stat p={p}: {out['f_stat']:.6g} vs {F_true:.6g}")
+            fails += 1
         if have_scipy:
             pvals = 2 * sps.t.sf(np.abs(t_true), dof)
             p_asm = 2 * sps.t.sf(np.abs(t_asm), dof)
             if not np.allclose(p_asm, pvals, rtol=1e-9):
                 print(f"FAIL p-value proxy p={p}")
                 fails += 1
-    print(f"stats differential (se/t/r2_adj{'+p' if have_scipy else ''}): "
+    print(f"stats differential (se/t/r2_adj/f_stat{'+p' if have_scipy else ''}): "
           f"{'OK' if fails == 0 else 'see above'}")
     print(f"ols_fit Tier-1: {'ALL OK' if fails == 0 else f'{fails} FAILURES'}")
     return fails

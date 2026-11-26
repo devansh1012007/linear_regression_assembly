@@ -22,10 +22,11 @@ section .text
 ; int32_t ols_residual_f64_sse2(const ols_resid_args_t *A)
 ; Args    : rdi = A
 ; Returns : eax = OLS_OK | OLS_E_NONFINITE
-; Requires: SSE2. *sse_out OVERWRITTEN; xtr_out[0..p) OVERWRITTEN if non-NULL.
+; Requires: SSE2. *sse_out OVERWRITTEN; xtr_out[0..p) and *rsum_out
+;           OVERWRITTEN if non-NULL.
 ; Memory  : reads A once; X rows [0..n) cols [0..p) at stride A->ldx8,
-;           y[0..n), w[0..n) if non-NULL, beta[0..p); writes *sse_out and
-;           xtr_out[0..p).
+;           y[0..n), w[0..n) if non-NULL, beta[0..p); writes *sse_out,
+;           xtr_out[0..p), *rsum_out (= sum w_i r_i, CSNE input).
 ; Clobbers: rax,rcx,rdx,rsi,rdi,r8-r11 + rbx,rbp,r12-r15 (pushed/popped).
 ; Numerics: SSE Neumaier; X'r plain adds.
 ; Cost    : PREDICTED (perf-log #16): ~2p+14 ops/row -> q=8 ~20 cy/row.
@@ -46,8 +47,8 @@ ols_residual_f64_sse2:
     mov     r14, [rdi+RA_N]
     mov     r15, [rdi+RA_P]
     lea     rax, [r15*8]
-    lea     rdx, [rax + 64]         ; xtr at [rsp+56..) + 56 ctrl
-    add     rdx, 15
+    lea     rdx, [rax + 96]         ; xtr at [rsp+56..) + 56 ctrl; tail holds
+    add     rdx, 15                 ; rsum_s/c and the rsum_out ptr
     and     rdx, -16
     sub     rsp, rdx
     movsd   xmm0, [rdi+RA_B0]
@@ -60,6 +61,8 @@ ols_residual_f64_sse2:
     mov     [rsp+40], rax
     mov     rax, [rdi+RA_XTR]
     mov     [rsp+48], rax           ; xtr_out
+    mov     rax, [rdi+RA_RSUM]
+    mov     [rsp+80+r15*8], rax     ; rsum_out ptr (tail slot)
     pxor    xmm0, xmm0
     movsd   [rsp+0], xmm0
     movsd   [rsp+8], xmm0
@@ -71,6 +74,12 @@ ols_residual_f64_sse2:
     inc     rcx
     jmp     .zx
 .zx_done:
+    ; rsum accumulators (sum w*r — the CSNE correction input) at the tail
+    lea     rcx, [rsp + 56]
+    lea     rcx, [rcx + r15*8]      ; rsum_s
+    pxor    xmm0, xmm0
+    movsd   [rcx], xmm0
+    movsd   [rcx+8], xmm0
     mov     rax, 0x7FFFFFFFFFFFFFFF
     movq    xmm7, rax
     punpcklqdq xmm7, xmm7
@@ -149,6 +158,32 @@ ols_residual_f64_sse2:
     addsd   xmm10, xmm9
     movsd   [rsp+8], xmm10
     movsd   [rsp+0], xmm2           ; s = t
+    ; 10b. Neumaier(rsum_s, rsum_c, r): sum w*r — CSNE needs the weighted
+    ; residual sum (xtr accumulates X*(w*r) from the same weighted r).
+    ; r is copied to xmm6 (dead after the sse block) so xmm4 survives for
+    ; the xtr pass below.
+    movapd  xmm6, xmm4
+    lea     rax, [rsp + 56]
+    lea     rax, [rax + r15*8]      ; rsum_s
+    movsd   xmm0, [rax]
+    movapd  xmm2, xmm0
+    addsd   xmm2, xmm6              ; t
+    movapd  xmm3, xmm0
+    andpd   xmm3, xmm7              ; |s|
+    movapd  xmm5, xmm6
+    andpd   xmm5, xmm7              ; |x|
+    cmpnltpd xmm3, xmm5             ; mask
+    movapd  xmm9, xmm0
+    subsd   xmm9, xmm2
+    addsd   xmm9, xmm6              ; e1
+    subsd   xmm6, xmm2
+    addsd   xmm6, xmm0              ; e2
+    andpd   xmm9, xmm3
+    andnpd  xmm3, xmm6
+    orpd    xmm9, xmm3              ; err
+    addsd   xmm9, [rax+8]
+    movsd   [rax+8], xmm9           ; c += err
+    movsd   [rax], xmm2             ; s = t
     ; 11. xtr[k] += Xrow[k]*r  (r in xmm4)
     xor     rcx, rcx
 .xtr:
@@ -165,11 +200,20 @@ ols_residual_f64_sse2:
     inc     r8
     jmp     .row
 .rows_done:
-    ; epilogue: *sseOut = s + c; copy xtr out if pointer non-NULL
+    ; epilogue: *sseOut = s + c; xtr/rsum copied out if pointers non-NULL
     mov     rax, [rsp+40]
     movsd   xmm0, [rsp+0]
     addsd   xmm0, [rsp+8]
     movsd   [rax], xmm0
+    mov     rax, [rsp+80+r15*8]     ; rsum_out
+    test    rax, rax
+    jz      .no_rsum
+    lea     rcx, [rsp + 56]
+    lea     rcx, [rcx + r15*8]      ; rsum_s
+    movsd   xmm0, [rcx]
+    addsd   xmm0, [rcx+8]
+    movsd   [rax], xmm0
+.no_rsum:
     mov     rax, [rsp+48]
     test    rax, rax
     jz      .no_xtr
@@ -371,6 +415,106 @@ ols_pivot_means_f64_sse2:
 .pm_nonfinite:
     mov     eax, OLS_E_NONFINITE
 .pm_out_exit:
+    lea     rsp, [rbp - 40]
+    pop     r15
+    pop     r14
+    pop     r13
+    pop     r12
+    pop     rbx
+    pop     rbp
+    ret
+
+; ==============================================================================
+; int32_t ols_predict_f64_sse2(const ols_pred_args_t *A)
+; Args    : rdi = A
+; Returns : eax = OLS_OK | OLS_E_NONFINITE
+; Requires: SSE2. out[0..n) OVERWRITTEN.
+; Memory  : reads A once; X rows [0..n) cols [0..p) at stride A->ldx8,
+;           beta[0..p); writes out[0..n).
+; Clobbers: rax,rcx,rdx,rsi,rdi,r8-r11 + rbx,rbp,r12-r15 (pushed/popped).
+; Numerics: per-row Neumaier-compensated dot + b0; p=0 -> out = b0;
+;           NaN/inf results rejected (the x-x==x parity check catches both).
+; Cost    : PREDICTED (perf-log #24): ~p+8 ops/row -> q=8 ~15 cy/row
+;           (the residual pass minus y/w loads and sse/xtr accumulation).
+; ==============================================================================
+global ols_predict_f64_sse2:function
+ols_predict_f64_sse2:
+    push    rbp
+    mov     rbp, rsp
+    push    rbx
+    push    r12
+    push    r13
+    push    r14
+    push    r15
+    sub     rsp, 40                 ; [0] b0 [8] out [16] ldx8 [24] beta
+    and     rsp, -16
+    mov     rbx, [rdi+PA_X]
+    mov     r12, [rdi+PA_LDX8]
+    mov     r13, [rdi+PA_BETA]
+    movsd   xmm0, [rdi+PA_B0]
+    movsd   [rsp+0], xmm0
+    mov     rax, [rdi+PA_OUT]
+    mov     [rsp+8], rax
+    mov     r14, [rdi+PA_N]
+    mov     r15, [rdi+PA_P]
+    mov     rax, 0x7FFFFFFFFFFFFFFF
+    movq    xmm7, rax
+    punpcklqdq xmm7, xmm7
+    xor     r8, r8                  ; i
+.row:
+    cmp     r8, r14
+    jae     .rows_done
+    ; per-row Neumaier dot: s (xmm0) c (xmm1), term (xmm2)
+    pxor    xmm0, xmm0
+    pxor    xmm1, xmm1
+    mov     rax, r8
+    imul    rax, r12
+    lea     r9, [rbx + rax]         ; row i
+    xor     rcx, rcx
+.dot:
+    cmp     rcx, r15
+    jae     .dot_done
+    movsd   xmm2, [r9 + rcx*8]
+    movsd   xmm3, [r13 + rcx*8]
+    mulsd   xmm2, xmm3              ; term
+    movapd  xmm4, xmm0
+    addsd   xmm4, xmm2              ; t
+    movapd  xmm5, xmm0
+    andpd   xmm5, xmm7              ; |s|
+    movapd  xmm6, xmm2
+    andpd   xmm6, xmm7              ; |x|
+    cmpnltpd xmm5, xmm6             ; mask
+    movapd  xmm8, xmm0
+    subsd   xmm8, xmm4
+    addsd   xmm8, xmm2              ; e1
+    subsd   xmm2, xmm4
+    addsd   xmm2, xmm0              ; e2
+    andpd   xmm8, xmm5
+    andnpd  xmm5, xmm2
+    orpd    xmm8, xmm5              ; err
+    addsd   xmm1, xmm8
+    movapd  xmm0, xmm4              ; s = t
+    inc     rcx
+    jmp     .dot
+.dot_done:
+    ; yhat = b0 + s + c; reject NaN/inf
+    movsd   xmm2, [rsp+0]           ; b0
+    addsd   xmm2, xmm0
+    addsd   xmm2, xmm1
+    movapd  xmm3, xmm2
+    subsd   xmm3, xmm2
+    ucomisd xmm3, xmm3
+    jp      .nonfinite
+    mov     rax, [rsp+8]
+    movsd   [rax + r8*8], xmm2
+    inc     r8
+    jmp     .row
+.rows_done:
+    xor     eax, eax
+    jmp     .out
+.nonfinite:
+    mov     eax, OLS_E_NONFINITE
+.out:
     lea     rsp, [rbp - 40]
     pop     r15
     pop     r14

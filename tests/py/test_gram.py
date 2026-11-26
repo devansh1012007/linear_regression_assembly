@@ -34,6 +34,8 @@ ols.ols_chol_inv_f64_sse2.restype = C.c_int32
 ols.ols_chol_inv_f64_sse2.argtypes = [np.ctypeslib.ndpointer(np.float64, flags="C_CONTIGUOUS"),
                                       C.c_size_t, np.ctypeslib.ndpointer(np.float64, flags="C_CONTIGUOUS"),
                                       C.c_size_t]
+ols.ols_predict_f64_sse2.restype = C.c_int32
+ols.ols_predict_f64_sse2.argtypes = [C.c_void_p]
 
 
 ols.ols_gram_scratch_bytes.restype = C.c_size_t
@@ -52,7 +54,14 @@ class ResidArgs(C.Structure):
     _fields_ = [("X", C.c_void_p), ("ldx8", C.c_size_t), ("y", C.c_void_p),
                 ("w", C.c_void_p), ("n", C.c_size_t), ("p", C.c_size_t),
                 ("b0", C.c_double), ("beta", C.c_void_p),
-                ("sse_out", C.c_void_p), ("xtr_out", C.c_void_p)]
+                ("sse_out", C.c_void_p), ("xtr_out", C.c_void_p),
+                ("rsum_out", C.c_void_p)]   # v3 append-only: size 88
+
+
+class PredArgs(C.Structure):
+    _fields_ = [("X", C.c_void_p), ("ldx8", C.c_size_t), ("beta", C.c_void_p),
+                ("b0", C.c_double), ("n", C.c_size_t), ("p", C.c_size_t),
+                ("out", C.c_void_p)]
 
 
 def ptr(a):
@@ -181,6 +190,27 @@ def test_residual():
     return fails
 
 
+def test_predict():
+    rng = np.random.default_rng(37)
+    fails = 0
+    for p in (0, 1, 3, 8, 16):
+        for n in (10, 100, 1000):
+            X = rng.standard_normal((n, p)) if p else np.zeros((n, 0))
+            beta = rng.standard_normal(p) if p else np.zeros(0)
+            b0 = 0.7
+            out = np.zeros(n)
+            pa = PredArgs(ptr(X) if p else 0, 8 if not p else X.strides[0],
+                          ptr(beta) if p else 0, b0, n, p, ptr(out))
+            rc = ols.ols_predict_f64_sse2(C.byref(pa))
+            ref = b0 + X @ beta if p else np.full(n, b0)
+            if rc != 0 or not np.allclose(out, ref, rtol=1e-12,
+                                          atol=1e-12 * max(1, np.abs(ref).max())):
+                print(f"FAIL predict p={p} n={n} rc={rc}")
+                fails += 1
+    print(f"predict differential: {'ALL OK' if fails == 0 else f'{fails} FAILURES'}")
+    return fails
+
+
 if __name__ == "__main__":
-    f = test_gram() + test_chol() + test_residual()
+    f = test_gram() + test_chol() + test_residual() + test_predict()
     sys.exit(1 if f else 0)
