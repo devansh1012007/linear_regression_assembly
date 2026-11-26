@@ -211,8 +211,11 @@ Surprises (honest):
 
 Verdicts (sandbox-relative, honestly caveated):
 - G2 (>= 85% of bandwidth): RED (was already; ladder adds context).
-- H2 (beat the ladder): RED overall — numpy-blas wins 3 of 4 cases;
-  asm-v3 wins only the q=17, n=1e6 DRAM-bound case (+11% vs numpy).
+- H1 (fused vs NumPy pipelines) [label corrected 2026-11-26; was
+  mislabeled "H2 (beat the ladder)"]: RED overall — numpy-blas wins 3
+  of 4 cases; asm-v3 wins only the q=17, n=1e6 DRAM-bound case (+11%
+  vs numpy). PLAN's actual H2 (asm within 5% of intrinsics) is GREEN
+  from the same data: +3.2-3.4% at q=8, 2.1-2.4x faster at q=17.
 - The ladder artifact (results/ladder.json + bench/ladder/) is ready for
   a bare-metal `make repro` re-run where OpenBLAS threads get the real
   core count and asm-v3 gets ols_gram_mt.
@@ -304,3 +307,22 @@ G2 closure (3rd evidence-backed iteration, escalation clause triggered):
   measured value: accuracy (12-15 LRE) + q>=16 DRAM-bound single-thread
   wins vs numpy (+11% at q=17 n=1e6) + 1.09-2.9x vs naive-O2. On a host
   with AVX-512 + real load bandwidth the same analysis says re-open.
+
+
+# Correction (session 8, 2026-11-26): H-labels in the Phase-5 ladder verdicts
+
+ADR-0009 and the phase-5 report labeled the asm-vs-OpenBLAS ladder result
+"H2". PLAN.md's pre-registered H2 is asm-within-5%-of-intrinsics; the
+OpenBLAS comparison is H1. Corrected in README/ADR-0009/phase5-report
+(labels moved, measurements untouched). The same ladder data yields the
+verdicts that were missing entirely:
+
+- H2 (asm vs intrinsics): GREEN — +3.4%/+3.2% at q=8 (inside the 5%
+  clause), 2.1-2.4x faster at q=17 (results/ladder.json).
+- H1 (fused vs NumPy pipelines): RED — numpy/OpenBLAS wins 3 of 4; asm
+  wins only q=17 n=1e6 (+11%).
+- H6 (6x8 tile >= 70% of FMA peak in cache): RED — measured 36-37% at
+  q=32, 49-50% at q=65 (gram-bench-v3.json; re-measured in v4). The
+  earlier "H6 not measured" statement was wrong: the data existed since
+  the v3 benchmark; only the verdict had never been computed against the
+  57.62 GFLOP/s measured peak.
