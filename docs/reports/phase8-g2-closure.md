@@ -56,6 +56,13 @@ iteration, then closure with an impossibility argument.
 
 ## Gate status after this phase
 
+> **Correction (2026-11-26, session 9):** the line below originally read
+> "G0/G1/G3/G4: green". The G4 claim was UNEARNED as written: of G4's four
+> clauses, only the E2E work existed, and the thread clause is H5 (RED on
+> this host). Session 9 built the missing artifacts (1e7 E2E, fuzz with a
+> 4-bug fix, freestanding CLI) and graded G4 as a split verdict — see the
+> phase-9 report and README. G0/G1/G3 remain green.
+
 - G2: RED, CLOSED with evidence (ADR-0012) — was the last open MUST-gate
   performance clause.
 - H5 (>= 85% of all-thread BW via N threads): RED on this host (18-19%

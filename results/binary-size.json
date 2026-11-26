@@ -1,0 +1,7 @@
+{
+ "schema": "binary-size",
+ "asm-ols-fs_bytes": 112160,
+ "asm-ols-fs_libc_free": true,
+ "asm-ols_bytes": 30160,
+ "note": "asm-ols-fs: -nostdlib -static, no dynamic section, NX stack, links the production CORE_OBJS + libgcc (q-float formatting)"
+}

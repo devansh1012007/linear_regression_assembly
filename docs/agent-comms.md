@@ -199,3 +199,21 @@ README (phase-5 bullet + new full H1-H6/G2 verdict table), ADR-0009
 (correction note + H2/H6 verdicts added), phase5 report, performance.md,
 perf-log (phase-5 verdict block + correction entry). Labels moved,
 measurements untouched.
+
+## 2026-11-26T11:30Z session-9 -> ALL [G4 closure + DoD 3/6 + PR #4 merged]
+PR #3 had merged before the H-label correction landed; PR #4 carried it
+and is MERGED (c3fa88a8). Session-9 substance: the phase-8 "G4 green"
+was unaudited — of G4's 4 clauses only E2E work existed. Built the rest:
+(1) 1e7x16 E2E GREEN vs streamed numpy NE-reference (2.9e-13; asm 14.4s
+vs ref 1.4s honestly recorded). (2) Fuzzer found 4 REAL CLI bugs —
+unescaped JSON keys, -nan tokens, unresolvable --features fitting
+UNINITIALIZED X, invalid-UTF-8 names — all fixed + regression-locked;
+fuzz now clean (2 seeds, 31k cases). (3) Freestanding CLI asm-ols-fs:
+112KB, _start + raw syscalls, -nostdlib -static, no dynamic section, NX
+stack, BITWISE-identical JSON to the libc CLI; hand-rolled %.17g on
+__float128 passes a 300k sweep vs libc exactly (perf-log documents the
+failed double/long-double/u128 attempts with rates). G4 final: SPLIT
+(3 GREEN clauses, thread clause RED = H5 host-bound). Also: to_olsb.py,
+3 evidence plots + make plots wired into repro, binary-size.json,
+nist-phase2.json repaired (committed copy was all-zero LRE). make verify
+ALL GREEN on clean build. Next: fresh-context auditor (DoD 6) then PR #5.

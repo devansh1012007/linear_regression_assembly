@@ -326,3 +326,38 @@ verdicts that were missing entirely:
   earlier "H6 not measured" statement was wrong: the data existed since
   the v3 benchmark; only the verdict had never been computed against the
   57.62 GFLOP/s measured peak.
+
+# Session 9 (2026-11-26): %.17g by hand — measured failure rates per scheme
+
+The freestanding CLI cannot call printf. Printing stats with 17
+significant digits (round-trip guarantee) took three attempts; every
+step was measured against libc %.17g on a 300k-case sweep
+(tests/c/outnum_test.c harness, rand-seeded mantissas x uniform binary
+exponents):
+
+- double rescale (v /= 10 to [1e16,1e17)): 192,598/300,000 mismatches.
+  The 17th digit is fiction: repeated decimal scaling in 53-bit
+  arithmetic rounds the wrong way more often than not.
+- long double rescale: 5,304/300,000 (1.8%) — better, still not
+  correct; cumulative rounding across up to ~340 decade steps.
+- + round-trip nudge (m +-1 while parse-back != v): made it WORSE
+  (299,502) — the nudge compared with the same imprecise rescale.
+- __float128 rescale + round-half-even: **0/300,000** (exact match with
+  libc). 113-bit mantissa keeps the accumulated relative error ~1e-31,
+  far below the 5e-17 needed at digit 17; half-even is required for the
+  ~112 exact-.5 cases per 300k.
+
+Related trap found while wiring the fs binary: ols_init(0) FORCE-selects
+SSE2 (auto is -1). The fs results were all ~1e-15 off the libc CLI until
+that was spotted — the documented sse2-vs-avx2 accumulation-order
+difference, not a bug. Machine truth: the ISA table is in ols.h; read it
+before passing magic constants.
+
+# Session 9: parser fuzz results (G4 clause 3)
+
+5-second seeded budget, results/fuzz-csv.json. Round 1: 21 failures /
+1,204 cases, root-caused to 4 CLI bugs (JSON key escaping, -nan tokens,
+unresolvable --features -> uninitialized X, invalid-UTF-8 names). After
+fixes + one fuzzer-side false-positive fix (getopt value-eating), clean
+on seed 42 (5,731 cases) and seed 1337 (26,055 cases). The bugs are
+locked by tests/py/cli_regression.py in make verify.

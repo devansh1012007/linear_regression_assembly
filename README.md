@@ -53,6 +53,40 @@ G2 is honestly RED: v3 kernel reaches 23–54% of the per-case binding bounds
   (v1 2% -> v3 22% -> v4 20%). First ols_gram_mt measurements: 18-19%
   of all-thread BW (H5 RED on this 2-vCPU host). 8-bug bring-up log in
   ADR-0012 (the xmm8/ymm8 aliasing class struck twice more).
+- **Phase 9 (2026-11-26): G4 closure + fuzzer + freestanding CLI.**
+  The blanket "G4 green" claim in the phase-8 report was UNEARNED: three
+  of its four clauses had no artifacts. All three built this session:
+  (1) **1e7 x 16 E2E** (`tests/py/e2e_1e7.py`, `results/e2e-1e7.json`):
+  .olsb generated + fit vs a streamed numpy normal-equations reference —
+  max rel diff 2.9e-13 (gate 5e-10), sigma2/r2/intercept all green; the
+  honest timing (asm 14.4 s vs OpenBLAS-threaded reference 1.4 s) is
+  recorded, consistent with the H1 verdict.
+  (2) **Parser fuzzing** (`tests/py/fuzz_csv.py`, `results/fuzz-csv.json`):
+  5 s budget, 2 seeds, 31k+ cases — found **4 real CLI bugs** (unescaped
+  name in JSON keys; `-nan`/`inf` stats tokens; `--features` values that
+  resolve to no column ran the fit on UNINITIALIZED X; raw invalid-UTF-8
+  bytes in .olsb names passed through to stdout). All fixed + locked by
+  `tests/py/cli_regression.py` (now in `make verify`). Fuzz runs clean.
+  (3) **Freestanding CLI** (`cli/freestanding.c` -> `asm-ols-fs`, 112 KB):
+  `_start` + raw syscalls, `-nostdlib -static`, readelf-verified no
+  dynamic section + NX stack, links the PRODUCTION core objects; JSON
+  output is BITWISE identical to the libc CLI (13/13 fields,
+  `tests/py/freestanding_check.py` in `make verify`). Two honest notes:
+  numbers print via a hand-rolled %.17g on __float128 + libgcc
+  (300k-case sweep vs libc: ALL OK — double/long-double rescaling
+  measurably loses the 17th digit), and `ols_init(-1)` (auto) is
+  REQUIRED: the first draft passed 0, force-selecting SSE2 and silently
+  changing every result by ~1e-15 (the documented sse2-vs-avx2
+  accumulation contract).
+  Also: `scripts/to_olsb.py` (CSV/.npy -> .olsb converter, PLAN-named,
+  was missing), `tools/make_plots.py` + 3 evidence plots (roofline,
+  thread-scaling, ladder; `make plots`, wired into `make repro`),
+  `results/binary-size.json`, and a repair of `results/nist-phase2.json`
+  (committed copy was all-zero LRE — a stale artifact; regenerated green).
+- **G4 final grade (honest split)**: E2E clause GREEN; fuzz clause GREEN
+  (after the 4 fixes); static-binary clause GREEN; thread-scaling clause
+  RED — it is the H5 verdict (18-19% of all-thread BW on this 2-vCPU
+  quota host; machinery verified, re-run on bare metal remains open).
 
 ## Status (end of Phase 3, 2026-11-25)
 - CSNE refinement + ridge wired; AUTO = Gram+CSNE (measured kappa* = 1e6).
