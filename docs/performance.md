@@ -49,7 +49,7 @@ measured machine.json): q>=9 needs ~125 uops/row >= 31 cy/row vs a 12-41
 cy DRAM budget (impossible at 4 uops/cy); q<=8's in-bounds load sequence
 alone floors at ~12-14 cy/row. Re-open on an AVX-512 host or measured
 better load throughput. Data: results/gram-bench-v4.json (incl. the first
-ols_gram_mt rungs: 18-19% of all-thread BW, H5 RED here).
+ols_gram_mt rungs: 18.0% / 18.7% of all-thread BW, H5 RED here).
 
 Recorded root causes (perf-log): per-element `sqrt(w)` reloads (~q `sqrtsd`
 per row on the weighted path), scalar G tails, strided G access — the kernel

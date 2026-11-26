@@ -20,10 +20,10 @@ no artifacts anywhere in the repo:
 
 | G4 clause | status at session start | session 9 |
 |---|---|---|
-| 1e7 x 16 E2E matches numpy pipeline within bounds | not run | **GREEN** (2.9e-13) |
+| 1e7 x 16 E2E matches numpy pipeline within bounds | not run | **GREEN** (max rel slope diff 2.1e-13) |
 | fuzz clean for a fixed budget | no fuzzer existed | **GREEN** after 4 bug fixes |
 | static binary, no dynamic section, NX stack | no freestanding build | **GREEN** (112 KB, readelf-verified) |
-| thread scaling >= 85% of all-thread BW | = H5 | **RED** (18-19%, 2-vCPU quota host) |
+| thread scaling >= 85% of all-thread BW | = H5 | **RED** (18.0% / 18.7%, 2-vCPU quota host) |
 
 ## Delivered
 
@@ -37,8 +37,9 @@ no artifacts anywhere in the repo:
 ### 2. 1e7 x 16 end-to-end (G4 clause 1)
 - `tests/py/e2e_1e7.py` + `results/e2e-1e7.json`: streams a 1.36 GB
   .olsb (never materialized in RAM), CLI fit vs a chunked numpy
-  normal-equations reference. PASS: max rel slope diff 2.9e-13 (bound
-  5e-10), intercept 6.7e-16, sigma2 1.2e-13 rel, r2 5.6e-16.
+  normal-equations reference. PASS: max rel slope diff 2.1e-13 (max abs
+  diff 2.9e-13; bound 5e-10), intercept 6.7e-16, sigma2 1.2e-13 rel, r2
+  5.6e-16.
 - Honest numbers recorded: asm 14.4 s vs OpenBLAS-threaded reference
   1.4 s (consistent with H1 RED).
 - Debugging note: the first reference implementation was WRONG (used
@@ -62,7 +63,7 @@ no artifacts anywhere in the repo:
      `name_ok()` UTF-8/control validation at load (both loaders).
 - Round 2 false positive was fuzzer-side (getopt eating `--json` as a
   value after `--rcond`); harness fixed, not the CLI.
-- Clean: seed 42 (5,731 cases) and seed 1337 (26,055 cases).
+- Clean: seed 42 (5,731 cases) and seed 1337 (26,055 cases; the committed artifact results/fuzz-csv-seed1337.json holds a re-run at the same 20 s budget with 23,956 cases — case count is timing-dependent).
 - `tests/py/cli_regression.py` locks all 4 fixes; runs in `make verify`.
 
 ### 4. Freestanding CLI (G4 clause 4, MoSCoW MUST "libc-free")

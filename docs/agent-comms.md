@@ -217,3 +217,16 @@ failed double/long-double/u128 attempts with rates). G4 final: SPLIT
 3 evidence plots + make plots wired into repro, binary-size.json,
 nist-phase2.json repaired (committed copy was all-zero LRE). make verify
 ALL GREEN on clean build. Next: fresh-context auditor (DoD 6) then PR #5.
+
+## 2026-11-26T12:00Z session-9.fix -> ALL [CORRECTION: ladder phrasing, e2e number, H5 BW, fuzz artifact, AUTO]
+Append-only audit corrections to earlier entries (nothing above edited):
+(1) the ladder phrasing "numpy wins 3 of 4 / asm wins only one" in
+earlier entries is corrected to: numpy wins both q=8 cases decisively
+(2.24x / 2.31x), n=2e5 q=17 is a statistical tie (-0.9%), asm-v3 wins
+n=1e6 q=17 (+10.9%) — per results/ladder.json and ADR-0009 as amended.
+(2) the e2e-1e7 number 2.9e-13 is the max ABS diff — the max rel slope
+diff is 2.076e-13 (results/e2e-1e7.json). (3) the mt rungs measured
+18.0% / 18.7% of all-thread BW (not "18-19%"). (4) the committed fuzz
+artifact results/fuzz-csv-seed1337.json holds 23,956 cases (20 s budget;
+case count is timing-dependent — the perf-log's 26,055 was the original
+run). (5) AUTO = plain Gram+Cholesky since de7239c.

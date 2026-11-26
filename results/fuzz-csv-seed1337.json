@@ -1,0 +1,16 @@
+{
+ "schema": "fuzz-csv",
+ "seed": 1337,
+ "budget_s": 20.0,
+ "elapsed_s": 20.0,
+ "cases": 23956,
+ "by_kind": {
+  "csv": 12107,
+  "olsb": 8317,
+  "argv": 3532
+ },
+ "failures": [],
+ "per_case_timeout_s": 20,
+ "invariant": "rc in {0,1,2}; no crash signal; rc=0 => valid JSON with n+coefficients",
+ "clean": true
+}

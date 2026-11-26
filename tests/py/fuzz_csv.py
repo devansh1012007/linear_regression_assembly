@@ -14,7 +14,8 @@ Strategy (deterministic, seeded; no external deps):
   C. argv fuzz            — random flag combos / missing values.
 
 Budget: wall-clock seconds (default 5.0), counted once per executed case;
-budget and rng seed recorded in results/fuzz-csv.json. Invariant per case:
+budget and rng seed recorded in the output JSON (default results/fuzz-csv.json;
+--out overrides, e.g. a second seed run writes its own artifact). Invariant per case:
   rc in {0,1,2}, no stderr containing 'Segmentation'/'Aborted' (rc<0 from
   the shell counts as immediate FAIL), rc==0 implies stdout parses as JSON
   with the expected keys. NOT in `make verify` (subprocess-heavy; this is
@@ -130,6 +131,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=SEED_DEFAULT)
     ap.add_argument("--budget", type=float, default=BUDGET_DEFAULT)
+    ap.add_argument("--out", default=str(OUT),
+                    help="output JSON path (default: results/fuzz-csv.json)")
     args = ap.parse_args()
     if not CLI.exists():
         sys.exit("fuzz_csv: build/cli/asm-ols missing (run make harness)")
@@ -230,7 +233,7 @@ def main() -> None:
         "invariant": "rc in {0,1,2}; no crash signal; rc=0 => valid JSON with n+coefficients",
         "clean": not fails,
     }
-    OUT.write_text(json.dumps(summary, indent=1))
+    Path(args.out).write_text(json.dumps(summary, indent=1))
     print(json.dumps(summary, indent=1))
     sys.exit(0 if not fails else 1)
 

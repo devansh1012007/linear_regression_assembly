@@ -212,9 +212,10 @@ Surprises (honest):
 Verdicts (sandbox-relative, honestly caveated):
 - G2 (>= 85% of bandwidth): RED (was already; ladder adds context).
 - H1 (fused vs NumPy pipelines) [label corrected 2026-11-26; was
-  mislabeled "H2 (beat the ladder)"]: RED overall — numpy-blas wins 3
-  of 4 cases; asm-v3 wins only the q=17, n=1e6 DRAM-bound case (+11%
-  vs numpy). PLAN's actual H2 (asm within 5% of intrinsics) is GREEN
+  mislabeled "H2 (beat the ladder)"]: RED overall — numpy-blas wins
+  both q=8 cases decisively (2.2x); n=2e5, q=17 is a tie within noise
+  (24.19 vs 23.97 ns/row); asm-v3 wins the q=17, n=1e6 DRAM-bound case
+  (+10.9% vs numpy). PLAN's actual H2 (asm within 5% of intrinsics) is GREEN
   from the same data: +3.2-3.4% at q=8, 2.1-2.4x faster at q=17.
 - The ladder artifact (results/ladder.json + bench/ladder/) is ready for
   a bare-metal `make repro` re-run where OpenBLAS threads get the real
@@ -319,8 +320,9 @@ verdicts that were missing entirely:
 
 - H2 (asm vs intrinsics): GREEN — +3.4%/+3.2% at q=8 (inside the 5%
   clause), 2.1-2.4x faster at q=17 (results/ladder.json).
-- H1 (fused vs NumPy pipelines): RED — numpy/OpenBLAS wins 3 of 4; asm
-  wins only q=17 n=1e6 (+11%).
+- H1 (fused vs NumPy pipelines): RED — numpy/OpenBLAS wins both q=8
+  cases decisively (2.24x / 2.31x), ties q=17 n=2e5 (24.19 vs 23.97
+  ns/row, within noise), loses q=17 n=1e6 (asm +10.9%).
 - H6 (6x8 tile >= 70% of FMA peak in cache): RED — measured 36-37% at
   q=32, 49-50% at q=65 (gram-bench-v3.json; re-measured in v4). The
   earlier "H6 not measured" statement was wrong: the data existed since
@@ -359,5 +361,7 @@ before passing magic constants.
 1,204 cases, root-caused to 4 CLI bugs (JSON key escaping, -nan tokens,
 unresolvable --features -> uninitialized X, invalid-UTF-8 names). After
 fixes + one fuzzer-side false-positive fix (getopt value-eating), clean
-on seed 42 (5,731 cases) and seed 1337 (26,055 cases). The bugs are
-locked by tests/py/cli_regression.py in make verify.
+on seed 42 (5,731 cases) and seed 1337 (26,055 cases in that run; the
+committed artifact results/fuzz-csv-seed1337.json, created at a 20 s
+budget, holds 23,956 — case count is timing-dependent at fixed budget).
+The bugs are locked by tests/py/cli_regression.py in make verify.
