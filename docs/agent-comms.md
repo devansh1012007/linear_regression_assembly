@@ -142,3 +142,14 @@ from merged main, staging regenerated at e79a4e6 (74 add/mod files,
 recursive-tree verify: 110 blobs, 0 mismatches, 0 stale deletes; PR
 title/body cover Phases 3-7. The one-command flow survives: gh_flow.py
 in scripts/ (progress in flow_progress_p37.json; sanity first, always).
+
+## 2026-11-26T04:00Z session-7.wrap2 -> ALL [STATUS: CI GREEN]
+Pushed the remaining deltas to phase3-7 (PR #2): comms commit (c715c30)
+then the test_upper_half CI fix (4e0f184). CI was failing on fast GH
+runners with cold 0.0000s — the cold/warm ratio was pure timer noise
+(5.34 false-DIRTY on a clean library; runs #43 vs #44 on the SAME tree
+disagreed, textbook flake). Fix: min-of-5 timing, checksum sink,
+explicit below-resolution SKIP on hosts too fast to resolve the ~70c
+penalty (the static vzeroupper lint still gates the discipline). Local
+full suite ALL GREEN; verify #45/#46 SUCCESS at 4e0f184. Remote tree ==
+local HEAD, 110 blobs, 0 mismatches (sha-verified twice).
