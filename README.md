@@ -6,10 +6,10 @@ mutation-tested kernels, measured-not-assumed performance.
 
 Status: **Phase 0–2 complete** (G0, G1 green; Phase-2 pyramid green — Gram
 engine, Cholesky, `ols_fit` Tier-1, statistics). The Phase-2 throughput gate
-G2 is honestly RED: v3 kernel reaches 20–54% of the per-case binding bounds
-(DRAM-resident cases vs the 18.89 GB/s 1-thread DRAM ceiling, cache cases
-vs the 57.6 GFLOP/s FMA peak; gate ≥ 85%), evidence in docs/adr/0005 and
-docs/perf-log.md.
+G2 is honestly RED: v3 kernel reaches 20–49% of the per-case binding bounds
+(bound basis: q·(q+1) FLOP/row at the 57.6 GFLOP/s FMA peak for cache cases,
+bytes/row at the 18.89 GB/s DRAM ceiling for DRAM cases; gate ≥ 85%),
+evidence in docs/adr/0005 and docs/perf-log.md.
 
 ## Quick start
     make verify          # lint + build + full test pyramid (== CI)
@@ -100,7 +100,9 @@ docs/perf-log.md.
   1e9-offset finding — commit de7239c, docs/reports/phase3-accuracy.md).
 - OLS_QR: Householder on an equilibrated weighted augmented copy; per-method
   NIST table green (QR 13.1 Longley, 12.2 Norris; Filip refused at fit
-  level, raw-kernel LRE 7.11 vs certified). f_stat + ols_predict shipped.
+  level, raw-kernel LRE 7.11 vs certified [reproducible via
+  tests/py/test_qr.py vs the certified values; recorded in the P3.x commit
+  messages, not a committed results artifact]). f_stat + ols_predict shipped.
 - H4 CONFIRMED: results/accuracy/kappa-sweep.json (+ plot).
 - Mutation pipeline repaired — the phase-1 score was inflated; honest
   28/34 = 0.8235 (results/mutation-phase3.json). Details:
@@ -116,7 +118,7 @@ docs/perf-log.md.
 | H4 | CSNE restores QR-like accuracy up to a measured kappa*; plain Gram+Cholesky fails near kappa ~ 1e8 | **CONFIRMED** | `results/accuracy/kappa-sweep.json` (+ plot): kappa* = 1e6 measured. |
 | H5 | N threads reach >= 85% of measured all-thread bandwidth | **RED (this host)** | `results/gram-bench-v4.json`: ols_gram_mt 2 threads = 6.76 GB/s (q=8) / 7.01 (q=17) vs 37.6 GB/s all-thread ceiling = 18.0-18.7%. 2-vCPU quota-capped KVM host; the rung is measured and committed for a bare-metal re-run. |
 | H6 | 6x8 tile >= 70% of measured FMA peak in cache, q+1 > p* | **RED** | `results/gram-bench-v3.json` (and v4 re-run): q=32 (n=4096, L2) = 21-22 GFLOP/s = 36-37% of the measured 57.62 GFLOP/s FMA peak; q=65 = 28 GFLOP/s = 49-50%. p* = 23.4 (machine.json), so both cases are in the FMA-bound regime. |
-| G2 | Fused Gram >= 85% of measured applicable bandwidth | **RED, CLOSED** | ADR-0012: v1 2% -> v3 20-54% -> v4 20% of bound across three evidence-backed iterations; load-port/issue-bound on this host; re-open conditions named. |
+| G2 | Fused Gram >= 85% of measured applicable bandwidth | **RED, CLOSED** | ADR-0012: v1 2% -> v3 20-49% -> v4 20% of bound across three evidence-backed iterations; load-port/issue-bound on this host; re-open conditions named. |
 
 - NIST StRD LRE (worst coefficient), simple fits: Norris 12.1, Pontius 11.9,
   NoInt1 14.7, NoInt2 15.0 — pre-registered gate was >= 10.
@@ -127,20 +129,26 @@ docs/perf-log.md.
   worst LRE 7.40 (Wampler1, above its 7.0 gate). se/t-stats/r2_adj match
   SciPy; 1e9-offset adversarial data agrees with mpmath. Summary:
   results/pyramid-summary.json, results/nist-phase2.json
-- Machine: FMA peak 57.6 GFLOP/s (2 FMA/cy @ 3.57 GHz), DRAM 18.89 GB/s
+- Machine: FMA peak 57.6 GFLOP/s (≈16 FLOP/cy ≈ 1 ymm-FMA/cy sustained;
+  2 FMA pipes theoretical — results/machine.json accumulator ladder),
+  DRAM 18.89 GB/s
   1-thread / 37.6 GB/s all-thread (run-to-run 16.2–18.9 on this shared KVM
   host), roofline crossover p* = 23.4 (23–27 across runs). Full data:
   results/machine.json
 - Gram kernel v3 (AVX2+FMA, group-pipelined column-panel): 17.2 ns/row at
-  q=8 and 24.4 ns/row at q=17, DRAM-resident, 11–21x over v1 — but 20–54%
+  q=8 and 24.4 ns/row at q=17, DRAM-resident, 11–20x over v1 — but 20–49%
   of the per-case binding bounds (19.7% of the 1-thread DRAM ceiling at
-  q=8, 29.5% at q=17; cache cases vs the FMA peak), so gate G2 stays
-  open. Data: results/gram-bench-v3.json, verdict in
-  docs/adr/0005-gram-v3-tile-and-gate.md
+  q=8, 29.5% at q=17; cache cases vs the FMA peak) (G2: CLOSED
+  RED-with-evidence at phase 8 — final verdict
+  docs/adr/0012-gram-v4-and-g2-closure.md; this v3 study is the baseline
+  evidence, docs/adr/0005-gram-v3-tile-and-gate.md). Data:
+  results/gram-bench-v3.json
 - Mutation score (Phase-1 kernels): 28/34 killed = 0.8235 (regenerated
   2026-11-26; the old 20/31 survives only in the historical phase-1
-  report); survivors analyzed in results/mutation-phase1.json (test gaps
-  queued, equivalents documented).
+  report); survivor_analysis (2 documented equivalents) in
+  results/mutation-phase3.json — mutation-phase1.json holds only raw
+  results (3 SURVIVED rows, no verdicts); the third survivor (sums.asm)
+  is the documented test gap, unstated in any verdict.
 
 ## Layout
 src/ = NASM core (abi.inc, macros.inc, core/) plus one C thread shim

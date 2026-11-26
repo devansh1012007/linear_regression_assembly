@@ -80,7 +80,7 @@ caller's buffer (the second corruption lesson).
   method_used (76), isa_used (80), pad (84), t* (88), f_stat (96)`.
   v1 callers (88 B) and v2 (96 B) keep working: v3 fields are the *last*
   append, and the error path zeroes every scalar through offset 96.
-- `ols_gram_args_t` 96 B / `ols_resid_args_t` 80 B: caller-built register
+- `ols_gram_args_t` 96 B / `ols_resid_args_t` 88 B: caller-built register
   blocks — one pointer deref instead of stack-spilled 7th+ args.
 
 ## 5. Test pyramid (what gates what)

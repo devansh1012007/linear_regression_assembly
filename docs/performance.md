@@ -30,7 +30,7 @@ v3, AVX2+FMA3, 1 thread, 30 reps, medians with CV 0.5–3.6%):
 | Case | v1 | v3 | Speedup |
 | --- | --- | --- | --- |
 | q=8, n=200k (DRAM) | 0.33 GB/s | 3.73 GB/s (17.2 ns/row ≈ 61 cy) | 11.3× |
-| q=17, n=200k | 0.26 GB/s | 5.57 GB/s (24.4 ns/row ≈ 87 cy) | 21.4× |
+| q=16, n=200k | 0.26 GB/s | 5.57 GB/s (24.4 ns/row ≈ 87 cy) | 19.9× |
 | q=32 (in-cache) | — | 50.5 ns/row (≈ 180 cy) | — |
 | q=65 (in-cache) | — | 152.9 ns/row (≈ 545 cy) | — |
 
@@ -50,6 +50,9 @@ cy DRAM budget (impossible at 4 uops/cy); q<=8's in-bounds load sequence
 alone floors at ~12-14 cy/row. Re-open on an AVX-512 host or measured
 better load throughput. Data: results/gram-bench-v4.json (incl. the first
 ols_gram_mt rungs: 18.0% / 18.7% of all-thread BW, H5 RED here).
+[corrected 2026-11-26: recomputed basis gives 19.7-48.7% for v3 /
+19.5-49.7% for v4; the 22% figure came from a 72 B/row bytes model vs
+the JSON's 64 B/row]
 
 Recorded root causes (perf-log): per-element `sqrt(w)` reloads (~q `sqrtsd`
 per row on the weighted path), scalar G tails, strided G access — the kernel

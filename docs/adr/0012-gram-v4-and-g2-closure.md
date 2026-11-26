@@ -9,6 +9,9 @@ Gate G2 (PLAN §6, Phase 2, pre-registered): out-of-cache single-thread
 - v1 (2026-11-20): ~2% of bound (results/gram-bench.json).
 - v3 (2026-11-21, ADR-0005): 22-54% of per-case binding bounds after 2 of
   3 evidence-backed iterations; escalation clause: "< 50% after three".
+  [corrected 2026-11-26: recomputed basis gives 19.7-48.7% for v3 /
+  19.5-49.7% for v4; the 22% figure came from a 72 B/row bytes model vs
+  the JSON's 64 B/row]
 - This session: iteration 3 (v4, fused pack-into-kernel for q <= 8) +
   the closure analysis.
 
@@ -77,6 +80,9 @@ Measured (results/gram-bench-v4.json, 30 reps, median):
      measured machine.json) floors the kernel near 12-14 cy/row before
      any FMA. v1 -> v3 -> v4 moved 2% -> 22% -> 20%: the ceiling on this
      host is ~20-25%, set by load-port throughput, not by kernel structure.
+     [corrected 2026-11-26: recomputed basis gives 19.7-48.7% for v3 /
+     19.5-49.7% for v4; the 22% figure came from a 72 B/row bytes model
+     vs the JSON's 64 B/row]
    - Re-open condition: a host where (a) CPUID load-throughput counters
      or (b) AVX-512 (32B loads halve the load count) change the floor.
 3. The pre-registered G2 target was written before the machine

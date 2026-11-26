@@ -36,7 +36,7 @@ file or report it came from. Predictions are written into `perf-log.md`
 | `../results/machine.json` | `bench/machine/characterize.py` | FMA peak, bandwidth ladder, roofline crossover |
 | `../results/gram-bench.json` / `gram-bench-v3.json` | gram benchmark | v1/v3 kernel throughput |
 | `../results/nist-phase1.json` / `nist-phase2.json` | pyramid L4/L5 | NIST StRD LREs per dataset |
-| `../results/mutation-phase1.json` | mutation suite | 34 mutants, 28/34 killed (0.8235), survivors analysis |
+| `../results/mutation-phase1.json` | mutation suite | 34 mutants, 28/34 killed (0.8235); survivor_analysis (2 equivalents) in mutation-phase3.json |
 | `../results/pyramid-summary.json` | `tests/py/run_all.py` | L1-L8 gate record |
 | `../results/gram-bench-v3.json` / `gram-bench-v4.json` | gram benchmarks | v3/v4 throughput incl. mt2 (H5) rungs |
 | `../results/nist-phase3.json` | per-method NIST | 11 datasets × {gram_chol, gram_csne, qr} |

@@ -84,7 +84,9 @@ QR-based second opinion (ADR-0007, P3.5) is since built —
 `results/nist-phase3.json` covers 11 datasets × {gram_chol, gram_csne,
 qr}; it does not square the condition number, and Filip is still refused
 at fit level (raw-kernel solve: rank 11, LRE 7.11 vs certified), reported
-without a target (G3).
+without a target (G3). [reproducible via tests/py/test_qr.py vs the
+certified values; recorded in the P3.x commit messages, not a committed
+results artifact]
 
 ## 5. Property sweeps and the planned κ study
 

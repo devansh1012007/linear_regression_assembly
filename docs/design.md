@@ -75,7 +75,7 @@ Predict-then-measure is mechanical: `perf-log.md` entries are written before
 benchmarking; gaps get root causes, not tolerance relaxations (rule 2/4).
 Gate G2 is the worked example: the pre-registered 85%-of-bandwidth target
 was missed by v1 (~2%), the v2 redesign was paused with a written negative
-result, v3 recovered 11.3-21.4× and *still* misses the gate — the gate stays
+result, v3 recovered 11.3-19.9× and *still* misses the gate — the gate stays
 red and the next iteration plan is recorded (`performance.md` §3). The
 pyramid (`tests/py/run_all.py`, L1-L8) is the single gate `make verify` runs.
 

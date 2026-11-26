@@ -124,7 +124,7 @@ def thread_scaling(plt, mach, gb4):
     for i, (a, b) in enumerate(zip(one_t, mt2)):
         ax.text(i - w / 2, a, f"{a:.2f}", ha="center", va="bottom", fontsize=8)
         ax.text(i + w / 2, b, f"{b:.2f}", ha="center", va="bottom", fontsize=8)
-        ax.text(i + w / 2, b + 2.2, f"{b / dram_all * 100:.0f}% of all-thread",
+        ax.text(i + w / 2, b + 2.2, f"{b / dram_all * 100:.1f}% of all-thread",
                 ha="center", va="bottom", fontsize=7.5, color="dimgray")
     ax.axhline(dram1t, color="gray", ls=":", lw=1.2,
                label=f"DRAM 1-thread ceiling ({dram1t:.1f} GB/s)")

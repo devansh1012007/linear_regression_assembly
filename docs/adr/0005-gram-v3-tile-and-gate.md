@@ -30,7 +30,10 @@ allows deviating when host evidence says so.
    three) is not triggered. Phase-2 MUST-completeness items proceed ahead
    of further kernel tuning; the >50% cases (q=65: 54%) show the kernel A
    core is within 2x of its FMA bound and the remaining gap concentrates
-   in the pack/PKG round-trip.
+   in the pack/PKG round-trip. [corrected 2026-11-26: recomputed per-case
+   bounds give v3 19.7-48.7% (DRAM 18.89 GB/s basis; the 23% used the
+   first-run 16.23 GB/s); q65 = 48.7% on the committed q·(q+1) model,
+   not 54%]
 
 ## Consequences
 - ols_gram_args_t grew scratch/scratch_bytes fields (size 96, versioned).

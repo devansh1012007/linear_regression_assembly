@@ -16,7 +16,7 @@ numbers script-produced at commit `HEAD` of the phase-3 branch.
 | `ols_predict` + QR API in ols.h; QA/PredArgs blocks in the drift table | drift test green |
 | Kappa sweep study → **H4 CONFIRMED**: chol loses 2·log10(κ) digits, **CSNE is QR-grade to the measured κ\* = 1e6**, QR loses only log10(κ) (13.5→8.0 at κ=1e8) | `results/accuracy/kappa-sweep.json` + plot |
 | AUTO now runs Gram+CSNE (data-derived rule); `method_used` reports truth | `032b69f` **[corrected 2026-11-26: AUTO reverted to plain Gram+Cholesky at `de7239c` after the L8 offset finding — the refinement residual loses u·\|offset\| precision at 1e9 offsets; the κ* = 1e6 data is retained]** |
-| Per-method NIST table, 11 datasets × 3 solvers, G3 gates ALL GREEN: QR 13.1 Longley / 12.2 Norris / 12.0 Pontius; CSNE 13.7 Norris; Filip refused at fit level (raw-kernel solve: rank 11, LRE 7.11 vs certified — lstsq truncates and disagrees) | `results/nist-phase3.json` |
+| Per-method NIST table, 11 datasets × 3 solvers, G3 gates ALL GREEN: QR 13.1 Longley / 12.2 Norris / 12.0 Pontius; CSNE 13.7 Norris; Filip refused at fit level (raw-kernel solve: rank 11, LRE 7.11 vs certified — lstsq truncates and disagrees) [reproducible via tests/py/test_qr.py vs the certified values; recorded in the P3.x commit messages, not a committed results artifact] | `results/nist-phase3.json` |
 | Mutation pipeline repaired + honest score | `993b65f` |
 
 ## What I got wrong (this session)

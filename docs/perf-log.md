@@ -129,6 +129,9 @@ Format: `### date kernel | hypothesis | change | predicted | measured (median, C
   rdi/r11 read 0 from the frame slots — self-contradictory evidence, root
   cause not identified within the session. Probes preserved in
   src/dev/probes.tar.gz; next step documented in src/dev/README.md.
+  [note 2026-11-26: src/dev/ was moved to docs/dev/ at f810a0a and the
+  dev-scratch files (incl. probes.tar.gz) were removed at 210f08c; those
+  paths are historical]
 - DECISION per AGENTS §7 escalation: v1 kernel restored as the shipping
   implementation (differential/guard/NIST all green at this commit); v2 work
   parked in src/dev/. No performance claims for v2; G2 perf gate remains RED
@@ -140,9 +143,15 @@ Format: `### date kernel | hypothesis | change | predicted | measured (median, C
   (61 cy), q=17 24.4 (87 cy), q=32 50.5 (180 cy), q=65 152.9 (545 cy).
 - vs v1: 0.33 -> 3.73 GB/s (q=8, 11.3x), 0.26 -> 5.57 (q=17, 21.4x),
   0.24 -> 5.07 (q=32, 21.1x), 0.24 -> 3.40 (q=65, 14.2x).
+  [corrected 2026-11-26: the q=17 ratio is 19.9x in ns/row (v1 484.77
+  ns/row is the q=16 case in gram-bench.json; the 21.4x GB/s figure
+  crossed different bytes/row bases: 128 vs 136 B/row)]
 - vs machine bounds (2 FMA/cyc from characterize.py knee=15acc/57.62 GFLOPs;
   DRAM 16.2 GB/s 1t): q=8 23% (DRAM-bound 4.0 ns), q=17 34% (DRAM 8.4),
   q=32 44% (FMA-bound 22.4), q=65 54% (FMA-bound 83.3).
+  [corrected 2026-11-26: bound recomputed on the committed q·(q+1) model
+  = 74.5 ns → 48.7%, matching the H6 row; the 83.3 ns basis used an
+  older flop count]
 - Root causes found and fixed this iteration (2 of 3 used):
   1. SSE/VEX transition penalty (~2x): legacy movsd/ucomisd/subsd/mulsd
      after VEX ops on the same registers. ALL AVX2-region scalar ops are now
@@ -228,6 +237,8 @@ Machine truth recap (results/machine.json, unchanged): core ~3.57 GHz,
 (16.2-18.9 run-to-run on this shared KVM host), L2 143 GB/s. v3 measured
 (gram-bench-v3.json): q=8 17.17 ns/row (61 cy) = 22% of DRAM bound;
 q=17 24.42 ns/row (87 cy) = 23% of DRAM bound.
+[corrected 2026-11-26: 19.7% (q8) and 29.5% (q17) of the 18.89 GB/s
+DRAM bound]
 
 ## Prediction #28 — v4 fused kernel (q <= 8), written BEFORE implementation
 
