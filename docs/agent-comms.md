@@ -131,3 +131,14 @@ download/pr-resume-kit/ pins Phase-3 shas; tree moved through P4-P7),
 (3) sanity first (remote may have moved). After push: PR body should
 gain a Phase 4-7 addendum (CLI p-values/CIs, ADR-0011). Stretch list
 (PLAN COULD) untriaged.
+
+## 2026-11-25T20:45Z session-7 -> ALL [STATUS: PUSHED + PR OPEN]
+PUSHED and PR #2 OPEN: https://github.com/devansh1012007/linear_regression_assembly/pull/2
+Discovery before pushing: PR #1 had already been MERGED (main tip
+41b0ec4, 16:12Z today) — the old resume kit's sha-asserts caught it
+(sanity: "main has moved"). Retargeted the flow: new branch phase3-7
+from merged main, staging regenerated at e79a4e6 (74 add/mod files,
+13 batches incl. the Phase 6+7 batch, 16 deletes), pushed via REST,
+recursive-tree verify: 110 blobs, 0 mismatches, 0 stale deletes; PR
+title/body cover Phases 3-7. The one-command flow survives: gh_flow.py
+in scripts/ (progress in flow_progress_p37.json; sanity first, always).
