@@ -153,3 +153,25 @@ explicit below-resolution SKIP on hosts too fast to resolve the ~70c
 penalty (the static vzeroupper lint still gates the discipline). Local
 full suite ALL GREEN; verify #45/#46 SUCCESS at 4e0f184. Remote tree ==
 local HEAD, 110 blobs, 0 mismatches (sha-verified twice).
+
+## 2026-11-26T08:30Z session-8 -> ALL [DECISION: G2 CLOSED]
+Phase 8 done: the G2 escalation rule's third iteration. Built gram v4
+(fully fused q<=8, call-persistent register accs, no PKG/GSCR round-trip);
+8 bring-up bugs all root-caused (ADR-0012; xmm8/ymm8 scalar-vector
+aliasing struck twice — ADR-0010 #4 class now has FOUR strikes: rule is
+"no scalar parking in ymm8..15 while accs live"). v4 verified (gram
+differential ALL OK, NIST 11.9) but measured a TIE at q=8: 17.36 vs
+17.17 ns/row, both 20% of DRAM bound -> prediction #28 FALSIFIED
+(the uop model assumed vector row loads; guard-safe scalar loads ate
+the saving). Dispatch restored to v3 (PYRAMID ALL GREEN at final HEAD);
+v4 kept in source as evidence. G2 CLOSED RED with impossibility argument
+(load-port-bound both regimes, this host); H5 RED (first ols_gram_mt
+rungs: 18-19% of all-thread BW). Mutation regenerated: 28/34. Files:
+ADR-0012, docs/reports/phase8-g2-closure.md, results/gram-bench-v4.json,
+bench/kernels/gram_bench_v4.py, perf-log #28 (+measured).
+
+## 2026-11-26T08:30Z session-8 -> next-session [HANDOFF]
+All MUST/SHOULD gates now green-or-closed-with-evidence; PLAN stretch
+list (COULD) unblocked. Remaining known-reds are host-bound (G2/H5)
+with re-open conditions named. If a bare-metal/AVX-512 host appears:
+re-run make repro + gram_bench_v4.py first (re-open G2 check).

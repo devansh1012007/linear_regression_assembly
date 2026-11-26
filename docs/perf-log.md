@@ -216,3 +216,91 @@ Verdicts (sandbox-relative, honestly caveated):
 - The ladder artifact (results/ladder.json + bench/ladder/) is ready for
   a bare-metal `make repro` re-run where OpenBLAS threads get the real
   core count and asm-v3 gets ols_gram_mt.
+
+# Phase 8 (session 8) — Gram v4: pack-into-kernel fusion (q <= 8) + G2 closure
+
+Machine truth recap (results/machine.json, unchanged): core ~3.57 GHz,
+1-2 FMA/cyc (knee 15 accs), ~1.15 ymm-load-uops/cyc, DRAM 18.89 GB/s 1t
+(16.2-18.9 run-to-run on this shared KVM host), L2 143 GB/s. v3 measured
+(gram-bench-v3.json): q=8 17.17 ns/row (61 cy) = 22% of DRAM bound;
+q=17 24.42 ns/row (87 cy) = 23% of DRAM bound.
+
+## Prediction #28 — v4 fused kernel (q <= 8), written BEFORE implementation
+
+Analysis (from the v3 listing, not measurement): v3's per-row cost at q=8
+splits into (a) PACK: ~7 loads + ~10 ALU + 4 PKG stores + 2 GSCR loads +
+2 GSCR stores + 4 zero-pad stores ~ 29 uops, (b) kernC body: 2 loads +
+8 vpermpd-broadcasts... but v3 kernC re-LOADS the packed row from PKG and
+stores per-group acc flushes to GSCR — the round-trip PKG→reg→GSCR→reg
+that ADR-0005 named as the remaining gap. At 4 uops/cyc the q=8 row
+retires ~61 cycles of work for a 12.0 cy/row DRAM budget (64 B/row /
+18.89 GB/s * 3.57 GHz): the kernel is ISSUE-bound, not bandwidth-bound —
+which is why v3 sits at 22% of the bound.
+
+v4 (q <= 8) eliminates the round-trip entirely:
+- u = sw*(z - c[k]) computed IN REGISTERS (z loaded once from X/y, c
+  pre-broadcast to ymm regs before the row loop, one vsqrtsd per row);
+- column accumulators ymm0..7 PERSIST for the whole call (no PACK exists
+  to clobber them: q<=8 means the full row fits 8 lanes = 1 ymm);
+- per row: q loads (or 2 for q<=8 via one vmovupd of u[0..3]+pad) +
+  q FMA (broadcast in mem form vfmadd231pd ymm_j, ymm_row, [row+j*8] is
+  NOT usable — u is in registers, so broadcast via vbroadcastsd from a
+  32B stack staging slot, or vpermpd in-register) + s/W accumulation.
+- Predicted uops/row at q=8: 1 w-load + 1 sqrt + 1 bcast + 8 z-loads +
+  8 c-subs (fused into the FMA chain? no: vsubpd then vfmadd) + 8 bcast
+  + 8 FMA + ~6 s/W fold + ~2 loop = ~41 uops... vs v3's ~61 cy. With
+  4 uops/cyc issue and 2 FMA ports: predicted 13-15 cy/row = 3.6-4.2
+  ns/row = 78-92% of the 18.89 GB/s DRAM bound at q=8 n=2e5.
+  CAVEAT (pre-registered): the 8 z-loads are SCALAR (vmovsd) in the tail
+  path; if the X row is contiguous (ldx == p) they can be 2 vmovupd —
+  but the ABI passes ldx8, rows may be strided; v4 loads 4-double chunks
+  when ldx8 == q*8 else scalar. Expected 14±3 ns/row, 75-95% of bound.
+- q=17 (kernel A): v4 does NOT change kernel A (its gap is FMA-count
+  intrinsic to the (i0,j) chunk triangle; fusion saves only the PKG
+  round-trip ~16 uops of ~125). Expected 24.4 -> 22.5±1.5 ns/row
+  (85-92% of its 25.7 cy/row issue-bound budget — NOT the DRAM bound:
+  q=17 needs 125 uops/row >= 25.7 cy at 4.9 uops/cyc > 4 uop ports, so
+  q>=9 can NEVER meet the 85%-of-DRAM G2 clause on this machine; see
+  ADR-0012 for the closure argument).
+- Mutation/safety: same contract, same NaN sentinel semantics (NaN row
+  -> OLS_E_NONFINITE via the UNORD check on each loaded chunk before it
+  enters an accumulator), same vzeroupper discipline.
+
+Measured result: PENDING (filled after bench/gram_v4 run at HEAD).
+
+## Prediction #28 — MEASURED (v4, results/gram-bench-v4.json, 2026-11-26)
+
+| case | predicted | measured | verdict |
+|---|---|---|---|
+| q=8 n=2e5 DRAM | 14±3 ns/row (75-95% bound) | **17.36** (20% of 3.39 ns/row DRAM budget) | **FALSIFIED** (outside window; ~tie with v3's 17.17) |
+| q=2 DRAM | (narrow path, similar expected) | 13.02 | — |
+| q=4 DRAM | — | 14.98 | — |
+| q=6 DRAM | — | 16.73 | — |
+| q=17 DRAM (v3 kernel A control) | ~22.5±1.5 | 24.45 (v3 measured 24.42) | control reproduced |
+| q=8 DRAM mt2 (H5 rung) | — | 9.47 ns/row = 6.76 GB/s (18% of 37.6 all-thread) | H5 RED |
+
+Why v4 did NOT win at q=8 (gap analysis vs the #28 uop model):
+1. The scalar in-bounds build (8 z-loads + 8 subs + 8 muls + staging stores
+   + mask reloads) costs ~as many uops as v3's vectorized PACK round-trip
+   that it replaced. The safety-driven switch from 32B vector loads to
+   scalar loads (guard-page correctness, see ADR-0012 bug log) ate the
+   predicted savings: prediction assumed 2 x vmovupd per row; shipped code
+   does q vmovsd.
+2. The s/W Neumaier bookkeeping (batch folds every 4 rows to preserve the
+   documented error model) adds ~2 uops/row over v3's group-folded sums.
+3. Both kernels sit ~5x above the 3.39 ns/row DRAM budget: the binding
+   resource on this host is NOT DRAM but the load-port/FMA-issue mix at
+   q+1 loads/row (machine.json: ~1.15 ymm-load-uops/cy, 1-2 FMA/cy).
+
+G2 closure (3rd evidence-backed iteration, escalation clause triggered):
+- v1: 2% of bound (gram-bench.json). v3: 22% (ADR-0005). v4: 20%.
+- The G2 >= 85%-of-DRAM clause is UNREACHABLE on this host for the single-
+  thread fused Gram at ANY q: q>=9 needs >= 125 uops/row >= 31 cy at 4
+  uops/cy > the 3.39-11.5 ns/row DRAM budget at 3.57 GHz (instruction-
+  issue impossibility, not a tuning gap). For q <= 8, the in-bounds scalar
+  load sequence alone (~4-8 cy/row) plus FMA/accumulation keeps the floor
+  near 12-14 cy/row = ~4x the DRAM budget.
+- G2 verdict: RED, CLOSED with evidence on this host. The kernel's
+  measured value: accuracy (12-15 LRE) + q>=16 DRAM-bound single-thread
+  wins vs numpy (+11% at q=17 n=1e6) + 1.09-2.9x vs naive-O2. On a host
+  with AVX-512 + real load bandwidth the same analysis says re-open.

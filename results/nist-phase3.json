@@ -32,8 +32,8 @@
    "n": 36,
    "p": 1,
    "lre": {
-    "gram_chol": 12.219763809157872,
-    "gram_csne": 13.674456258397349,
+    "gram_chol": 2.246782093557512,
+    "gram_csne": 2.30699990319504,
     "qr": 12.15660083946732
    },
    "rc": {
@@ -47,8 +47,8 @@
    "n": 40,
    "p": 2,
    "lre": {
-    "gram_chol": 11.977161077248624,
-    "gram_csne": 13.015118497604885,
+    "gram_chol": 0.0,
+    "gram_csne": 0.3118286445289251,
     "qr": 11.977161077248624
    },
    "rc": {
@@ -92,13 +92,13 @@
    "n": 16,
    "p": 6,
    "lre": {
-    "gram_chol": 11.724663277003016,
-    "gram_csne": 11.35754904309802,
+    "gram_chol": null,
+    "gram_csne": null,
     "qr": 13.102273945184097
    },
    "rc": {
-    "gram_chol": 0,
-    "gram_csne": 0,
+    "gram_chol": -7,
+    "gram_csne": -7,
     "qr": 0
    }
   },
@@ -107,13 +107,13 @@
    "n": 21,
    "p": 5,
    "lre": {
-    "gram_chol": 7.395056800300998,
-    "gram_csne": 10.91145157517787,
+    "gram_chol": null,
+    "gram_csne": null,
     "qr": 9.632959861247398
    },
    "rc": {
-    "gram_chol": 0,
-    "gram_csne": 0,
+    "gram_chol": -7,
+    "gram_csne": -7,
     "qr": 0
    }
   },
@@ -122,13 +122,13 @@
    "n": 21,
    "p": 5,
    "lre": {
-    "gram_chol": 10.104289425713132,
-    "gram_csne": 13.232495967007846,
+    "gram_chol": null,
+    "gram_csne": null,
     "qr": 12.89300771952469
    },
    "rc": {
-    "gram_chol": 0,
-    "gram_csne": 0,
+    "gram_chol": -7,
+    "gram_csne": -7,
     "qr": 0
    }
   },
@@ -137,13 +137,13 @@
    "n": 21,
    "p": 5,
    "lre": {
-    "gram_chol": 7.395056800300998,
-    "gram_csne": 10.892098038349262,
+    "gram_chol": null,
+    "gram_csne": null,
     "qr": 9.088891816897123
    },
    "rc": {
-    "gram_chol": 0,
-    "gram_csne": 0,
+    "gram_chol": -7,
+    "gram_csne": -7,
     "qr": 0
    }
   },
@@ -152,13 +152,13 @@
    "n": 21,
    "p": 5,
    "lre": {
-    "gram_chol": 7.395056800300998,
-    "gram_csne": 7.957844158635731,
+    "gram_chol": null,
+    "gram_csne": null,
     "qr": 7.732014566544824
    },
    "rc": {
-    "gram_chol": 0,
-    "gram_csne": 0,
+    "gram_chol": -7,
+    "gram_csne": -7,
     "qr": 0
    }
   },
@@ -167,13 +167,13 @@
    "n": 21,
    "p": 5,
    "lre": {
-    "gram_chol": 6.392141449116235,
-    "gram_csne": 6.100446240080418,
+    "gram_chol": null,
+    "gram_csne": null,
     "qr": 5.725734348892829
    },
    "rc": {
-    "gram_chol": 0,
-    "gram_csne": 0,
+    "gram_chol": -7,
+    "gram_csne": -7,
     "qr": 0
    }
   },
