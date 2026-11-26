@@ -39,6 +39,18 @@ G2 is honestly RED: v3 kernel reaches 23–54% of the per-case binding bounds
   DRAM-bound single-thread regime.
 - Critical fix this session: `ols_workspace_size` clobbered the caller's
   rbx (mov-then-push); every C caller could crash post-free.
+- **Phase 8 (2026-11-26): G2 CLOSED RED-with-evidence** (ADR-0012). The
+  third evidence-backed iteration — gram v4, a fully fused q<=8 kernel
+  with call-persistent register accumulators — verified correct (gram
+  differential ALL OK, NIST 11.9) but measured a TIE with v3 at q=8
+  (17.36 vs 17.17 ns/row, both 20% of the DRAM bound; prediction #28
+  FALSIFIED, perf-log). v3 dispatch restored; v4 kept in source as
+  documented evidence. Closure argument: both q regimes are
+  load-port/issue-bound on this host (measured ~1.15 ymm-load-uops/cy),
+  so the 85%-of-DRAM clause is unreachable regardless of kernel tuning
+  (v1 2% -> v3 22% -> v4 20%). First ols_gram_mt measurements: 18-19%
+  of all-thread BW (H5 RED on this 2-vCPU host). 8-bug bring-up log in
+  ADR-0012 (the xmm8/ymm8 aliasing class struck twice more).
 
 ## Status (end of Phase 3, 2026-11-25)
 - CSNE refinement + ridge wired; AUTO = Gram+CSNE (measured kappa* = 1e6).
@@ -84,6 +96,13 @@ agent-comms.md (cross-session log), adr/ (decision records),
 reports/ (phase reports).
 
 ## What I got wrong (so far)
+
+Phase 8 additions (ADR-0012): prediction #28's uop model assumed 32B
+vector row loads; shipping guard-safe scalar loads erased the predicted
+win — the v4 kernel tied v3 and was not dispatched. A recurring subnormal
+(1.39e-309) was initially mislabeled as probe noise; it was a real bug
+(unzeroed xmm0 preloading the batch sums) that only fired on exact
+cancellation — caught by the P1 suite, not by my random probes.
 1. Raw second moments instead of pivot-shifted sums: Sxx cancelled to 0 at
    offset 1e9 (intrinsic to the formula, not accumulation). Fixed per
    numerical-ols-algorithms §2.

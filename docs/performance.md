@@ -41,8 +41,15 @@ until the Phase-5 baseline ladder exists to measure against.
 ## 3. Gate G2: CORRECTNESS GREEN, PERFORMANCE RED (honest)
 
 Pre-registered target: fused Gram ≥ 85% of the measured applicable
-bandwidth. Status after the v3 iteration (perf-log 2026-11-21 entry):
-23–54% of the applicable cache-level bounds — the gate is red and stays red.
+bandwidth. FINAL STATUS (2026-11-26, ADR-0012): RED, CLOSED with evidence
+after the third iteration. v1 2% -> v3 22-54% -> v4 (fully fused q<=8,
+verified correct) 20% at q=8 — a measured tie with v3. Both q regimes are
+load-port/issue-bound on this host (~1.15 ymm-load-uops/cy, 1-2 FMA/cy,
+measured machine.json): q>=9 needs ~125 uops/row >= 31 cy/row vs a 12-41
+cy DRAM budget (impossible at 4 uops/cy); q<=8's in-bounds load sequence
+alone floors at ~12-14 cy/row. Re-open on an AVX-512 host or measured
+better load throughput. Data: results/gram-bench-v4.json (incl. the first
+ols_gram_mt rungs: 18-19% of all-thread BW, H5 RED here).
 
 Recorded root causes (perf-log): per-element `sqrt(w)` reloads (~q `sqrtsd`
 per row on the weighted path), scalar G tails, strided G access — the kernel

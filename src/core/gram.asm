@@ -65,6 +65,28 @@ default rel
 %define G2_Q8       192     ; size_t q*8 (G row stride, bytes)
 %define G2_SC       200     ; s_c (q doubles); s_mem lives right after it
 ; frame = G2_SC + 2*q*8 (s_c + s_mem), 32-aligned.
+; ---- v4 (fused q<=8) frame slots: base V4 = frame_start = G2_SC + 2*q*8,
+; rounded up 32 in the prologue calc — offsets are FROM THAT ROUNDED BASE,
+; kept in a callee-saved-free way: recomputed in .v4 via rbp? No: the v3
+; code addresses everything off rsp, so v4 slots are rsp-relative TOO, but
+; their offset depends on q. Solution: .v4 stores the rounded base in the
+; (v3-unused-for-q<=8) G2_SMEM slot? It IS used (zeroing loop writes s_mem).
+; Cleanest: v4 uses G2_CUR (free for q<=8: no PKG) to hold its slot base.
+%define V4_ULO      0       ; u lo half staging (32B): also the bcast slots
+%define V4_UHI      32      ; u hi half staging (32B)
+%define V4_SLO      64      ; s batch plain sums, lo (32B)
+%define V4_SHI      96      ; s batch plain sums, hi (32B)
+%define V4_MASKL    128     ; lane mask lo: lane k set iff k < q (32B)
+%define V4_MASKH    160     ; lane mask hi: lane k set iff 4+k < q (32B)
+%define V4_CLO      192     ; c[0..3] staging, zero-padded (32B)
+%define V4_CHI      224     ; c[4..7] staging, zero-padded (32B)
+%define V4_SW       256     ; sqrt(w) per row — MUST live in memory: xmm8..15
+                            ; alias the acc/temp ymms (the 122-vs-121 bug:
+                            ; vbroadcastsd xmm8 broadcast the ACC after the
+                            ; j>=4 hi-FMA clobbered it; same class as
+                            ; ADR-0010 #4). Slot 256: OUTSIDE the 0..256
+                            ; staging block (240 collided with CHI[2] = c[6]
+                            ; -> u[6] = 16 for 17, the q=8 off-by-one).
 
 ; ==============================================================================
 ; PACK_ROW n — pack row (r8+n) of the group. Inputs: rsi = PKG group base,
@@ -419,11 +441,17 @@ ols_gram_f64_avx2:
     cmp     [rdi+GA_SCRATCH_BYTES], rax
     jb      .ework_pop
     pop     rdi
-    ; ---- frame: G2_SC + 2*q*8, 32-aligned ----
+    ; ---- frame: align32(G2_SC + 2*q*8) + 256 for the fused q<=8 path -----
+    ; (ULO/UHI/SLO/SHI/MASKL/MASKH/CLO/CHI = 8 x 32B slots). The 256 is added
+    ; AFTER the 32-alignment of the v3 part: the .v4 slot base is the
+    ; 32-aligned end of the v3 area, and the +256 must lie fully inside the
+    ; frame (q=4 bug: pre-align +256 overflowed the frame by the pad bytes
+    ; and stomped saved registers / Wout).
     lea     rax, [r14*8]
     lea     rdx, [rax*2 + G2_SC]
     add     rdx, 31
     and     rdx, -32
+    add     rdx, 288
     sub     rsp, rdx
     ; ---- ctrl block ----
     mov     [rsp+UC_Q], r14
@@ -466,7 +494,10 @@ ols_gram_f64_avx2:
     mov     [rsp+G2_CUR], rbx
     lea     rcx, [rbx + r13*4]      ; second group buffer: PKG + 4*QN8
     mov     [rsp+G2_NXT], rcx
-    ; ---- zero GSCR (QN*QSC doubles) ----
+    ; ---- zero GSCR (QN*QSC doubles) — v3 RESTORED as the default q<=8 path
+    ; (ADR-0012: v4 measured a tie at q=8, 17.36 vs 17.17 ns/row, both 20%
+    ; of the DRAM bound, plus a P2 gate-edge s-reassociation regression;
+    ; the v4 body below stays as documented iteration-3 evidence) --------
     vxorpd  ymm0, ymm0, ymm0
     mov     rcx, [rsp+G2_QN]
     imul    rcx, [rsp+G2_QSC]       ; QN*QSC doubles
@@ -493,7 +524,8 @@ ols_gram_f64_avx2:
     vmovsd  [rsp+UC_WS], xmm0
     vmovsd  [rsp+UC_WC], xmm0
     vmovsd  [rsp+G2_WB], xmm0
-    ; ---- kernC body dispatch (q fixed for the whole call) ----
+    cmp     r14, 8
+    ; ---- kernC body dispatch (q fixed for the whole call) ---- [v3 path]
     lea     rax, [rel .kC_q1]
     cmp     r14, 2
     lea     rdx, [rel .kC_q2]
@@ -808,6 +840,614 @@ ols_gram_f64_avx2:
     pop     rbx
     pop     rbp
     ret
+
+; ==============================================================================
+; V4 — fused single-pass kernel for q <= 8 (ADR-0012; perf-log #28).
+; No PKG, no GSCR, no group pipeline: one row loop, u computed in registers,
+; column accumulators persist across the WHOLE call.
+;   regs : accs lo ymm0..7 (acc_j lanes = G[j][0..3]), accs hi ymm8..11
+;          (G[j][4..7], j=4..7), u_lo ymm12, u_hi ymm13, bcast ymm14,
+;          sw bcast / temp ymm15.
+;   frame (rsp + V4BASE + off, V4BASE stored in G2_CUR): ULO/UHI u staging,
+;          SLO/SHI s batch plain sums, MASKL/MASKH lane masks, SCLO/SCHI
+;          s Neumaier corrections, plus s_c scalars handled vectorially.
+;   s contract: s = sum w(z-c); per-row vector plain accumulation into
+;          SLO/SHI, folded into Neumaier pairs (S, SCLO/SHI) every 32 rows
+;          (V4_BATCH) and at the end. W: per-row plain xmm fold into the
+;          same 2-level structure v3 uses (WS/WC via G2_WB batch slot).
+;   NaN semantics identical: any non-finite z (incl. y) or w, or w < 0
+;          (sqrt -> NaN) -> OLS_E_NONFINITE, checked per row BEFORE the
+;          accumulators see the row. Lanes >= q are force-zeroed via the
+;          lane masks BEFORE the NaN check (garbage X-tail never judged).
+; ==============================================================================
+%define V4_BATCH 4
+; 4: v3's plain-sum group was 4 rows (one PACK group) folded into the
+; Neumaier pair per fold. Matching that cut keeps the documented error
+; model (P1 bound) AND the P2 permutation slack measured for v3 —
+; 32/8-row batches regressed both gates (1.156e-10 on P2 n100p3).
+
+; ==============================================================================
+; V4 — fused single-pass kernel for q <= 8 (ADR-0012; perf-log #28).
+; No PKG, no GSCR, no group pipeline: one row loop; u computed in registers;
+; column accumulators persist across the WHOLE call.
+;   regs : lo accs ymm0..7 (acc_j, lanes 0..3 = G[j][0..3], j < q),
+;          hi accs ymm8..11 (G[j][4..7], j = 4..q-1), u_lo ymm12, u_hi ymm13,
+;          bcast temp ymm14, sw bcast temp ymm15.
+;   frame (base = [rsp+G2_CUR] = V4BASE, an rsp-relative offset):
+;          ULO/UHI  u staging (bcast source), SLO/SHI s batch plain sums,
+;          MASKL/MASKH lane masks (lane k set iff lane-index < q).
+;   s contract: s = sum w(z-c). Per row: s_batch += sw*u (vector, exact in
+;          the masked lanes). Every V4_BATCH rows and at the end: per-column
+;          scalar Neumaier fold into (s, s_c) — same two-level structure and
+;          the same algorithm shape as v3's FOLD_SUMS.
+;   W contract: per-row plain batch sum in G2_WB; Neumaier fold into
+;          (WS, WC) at each batch boundary and at the end (v3 structure).
+;   NaN semantics: w NaN, w < 0 (sqrt -> NaN), z or y NaN -> NONFINITE,
+;          checked per row BEFORE the accumulators see the row. Garbage
+;          lanes (>= q) are masked to 0 BEFORE the NaN check (masked X-tail
+;          loads can never trigger a false NONFINITE).
+;   G contract: upper triangle written from accs, strictly-lower zeroed.
+; ==============================================================================
+%define V4_BATCH 4
+; 4: v3's plain-sum group was 4 rows (one PACK group) folded into the
+; Neumaier pair per fold. Matching that cut keeps the documented error
+; model (P1 bound) AND the P2 permutation slack measured for v3 —
+; 32/8-row batches regressed both gates (1.156e-10 on P2 n100p3).
+
+; --- v4 fused kernel (q <= 8): NOT DISPATCHED (ADR-0012; measured tie
+; at q=8 + P2 gate-edge regression; kept as iteration-3 evidence —
+; re-enable for future hosts by jumping here after the .zs zeroing,
+; q <= 8 only). ---
+.v4:
+    ; ---- v4 slot base: end of the v3 frame area (s_c + s_mem), 32-aligned,
+    ; plus the 256 the frame calc reserved. Park the rsp-relative offset in
+    ; G2_CUR (no PKG exists for q <= 8). ----
+    lea     rax, [r14*8]
+    lea     rax, [rax*2 + G2_SC]
+    add     rax, 31
+    and     rax, -32
+    lea     rsi, [rsp + rax]          ; rsi = V4 slot base ADDRESS
+    mov     [rsp+G2_CUR], rsi         ; parked for the epilogue
+    ; ---- zero the v4 frame areas (SLO/SHI; ULO/UHI/MASK written before use)
+    vxorpd  ymm0, ymm0, ymm0
+    vmovupd [rsi+V4_SLO], ymm0
+    vmovupd [rsi+V4_SHI], ymm0
+    ; ---- c staging: CLO/CHI = c[0..q) zero-padded to 8 lanes (the row
+    ; bodies load c in 4-double chunks; padding keeps every read IN BOUNDS
+    ; — c is exactly q doubles at the caller, garbage there is masked but
+    ; the READ itself would cross the buffer (guard-test violation).) ----
+    mov     rdx, [rsp+UC_C]
+    xor     rcx, rcx
+.v4_cstage:
+    cmp     rcx, r14
+    jae     .v4_czero
+    mov     rax, [rdx + rcx*8]
+    jmp     .v4_cput
+.v4_czero:
+    xor     eax, eax
+.v4_cput:
+    cmp     rcx, 4
+    jb      .v4_clo
+    mov     [rsi+V4_CHI + rcx*8 - 32], rax
+    jmp     .v4_cnext
+.v4_clo:
+    mov     [rsi+V4_CLO + rcx*8], rax
+.v4_cnext:
+    inc     rcx
+    cmp     rcx, 8
+    jb      .v4_cstage
+    ; ---- lane masks (once per call): MASKL lane k = k < q, MASKH = 4+k < q
+    xor     rcx, rcx                  ; k = 0..3
+.v4_mask:
+    mov     rdx, -1
+    cmp     rcx, r14
+    jb      .v4_ml_set
+    xor     edx, edx
+.v4_ml_set:
+    mov     [rsi+V4_MASKL + rcx*8], rdx
+    mov     rdx, -1
+    lea     r8, [rcx + 4]
+    cmp     r8, r14
+    jb      .v4_mh_set
+    xor     edx, edx
+.v4_mh_set:
+    mov     [rsi+V4_MASKH + rcx*8], rdx
+    inc     rcx
+    cmp     rcx, 4
+    jb      .v4_mask
+    ; ---- zero the accumulators (lo ymm0..7, hi ymm8..11) -----------------
+    vxorpd  ymm0, ymm0, ymm0
+    vxorpd  ymm1, ymm1, ymm1
+    vxorpd  ymm2, ymm2, ymm2
+    vxorpd  ymm3, ymm3, ymm3
+    vxorpd  ymm4, ymm4, ymm4
+    vxorpd  ymm5, ymm5, ymm5
+    vxorpd  ymm6, ymm6, ymm6
+    vxorpd  ymm7, ymm7, ymm7
+    vxorpd  ymm8, ymm8, ymm8
+    vxorpd  ymm9, ymm9, ymm9
+    vxorpd  ymm10, ymm10, ymm10
+    vxorpd  ymm11, ymm11, ymm11
+    ; ---- register plan for the row loop:
+    ;   rbx = X base, r13 = ldx8, r11 = y base, r10 = w base (or 0),
+    ;   rdi = n, rsi = V4 slot base, r12 = i (row), r15 = batch left
+    ;   (c is consumed via the CLO/CHI staging slots; r9 is free)
+    mov     rbx, [rsp+UC_X]
+    mov     r13, [rsp+UC_LDX8]
+    mov     r11, [rsp+UC_Y]
+    mov     r10, [rsp+UC_W]
+    mov     rdi, [rsp+UC_N]
+    xor     r12, r12                  ; i = 0
+    mov     r15, V4_BATCH
+    ; ---- per-q row-body dispatch (q is call-fixed; blend imm is q-literal)
+    lea     rax, [rel .v4q1]
+    cmp     r14, 2
+    lea     rdx, [rel .v4q2]
+    cmovae  rax, rdx
+    cmp     r14, 3
+    lea     rdx, [rel .v4q3]
+    cmovae  rax, rdx
+    cmp     r14, 4
+    lea     rdx, [rel .v4q4]
+    cmovae  rax, rdx
+    cmp     r14, 5
+    lea     rdx, [rel .v4q5]
+    cmovae  rax, rdx
+    cmp     r14, 6
+    lea     rdx, [rel .v4q6]
+    cmovae  rax, rdx
+    cmp     r14, 7
+    lea     rdx, [rel .v4q7]
+    cmovae  rax, rdx
+    cmp     r14, 8
+    lea     rdx, [rel .v4q8]
+    cmovae  rax, rdx
+    mov     [rsp+G2_NXT], rax         ; row-body entry (G2_NXT free: no PKG)
+.v4_row:
+    cmp     r12, rdi
+    jae     .v4_fold_final
+    ; ---- w[i] -> sw = sqrt(w) -> [rsi+V4_SW]; NaN and w<0 checks ---------
+    ; The momentary load register is xmm12 (u_lo temp, dead between rows):
+    ; xmm8..11 alias the PERSISTENT hi accs — any scalar write there (the
+    ; diag[4] += sw-per-row bug) corrupts G[4][4].
+    test    r10, r10
+    jz      .v4_w1
+    vmovsd  xmm12, [r10 + r12*8]
+    jmp     .v4_wh
+.v4_w1:
+    mov     eax, 1
+    vcvtsi2sd xmm12, xmm12, eax       ; sw = 1
+    jmp     .v4_ws
+.v4_wh:
+    vucomisd xmm12, xmm12             ; w NaN?
+    jp      .nonfinite
+    vsqrtsd xmm12, xmm12, xmm12       ; sw = sqrt(w); w < 0 -> NaN
+.v4_ws:
+    vucomisd xmm12, xmm12             ; sw NaN (w < 0 or sqrt NaN)?
+    jp      .nonfinite
+    vmovsd  [rsi+V4_SW], xmm12        ; park sw
+    ; ---- X row base -> r8 --------------------------------------------------
+    mov     rax, r12
+    imul    rax, r13
+    lea     r8, [rbx + rax]
+    jmp     [rsp+G2_NXT]              ; per-q row body
+
+; ==============================================================================
+; V4_ROW_BODY q — one row for fixed q (1..8). Entry: r8 = X row, r11 = y,
+; r12 = i, sw at [rsi+V4_SW], rsi = V4BASE, r14 = q. Builds masked u_lo/u_hi
+; (u = sw*(z - c), y at lane q-1, lanes >= q zeroed), NaN-checks, FMAs into
+; the persistent accs, accumulates the s batch vectors, jumps .v4_tail.
+; Touches ONLY ymm12..15 + GPR scratch outside the FMA accumulators.
+; ==============================================================================
+%macro V4_ROW_BODY 1
+%if %1 <= 4
+.v4q%1:
+    ; Build u_lo = sw*(z - c), k = 0..q-1, with SCALAR in-bounds loads:
+    ; z[k] (k < q-1) from the X row; z[q-1] = y[i]. Exactly q-1 doubles at
+    ; [r8 .. r8+(q-2)*8] plus y[i] are read — never past the row, unlike a
+    ; 32B chunk load (the last X row would overrun the buffer: guard risk).
+    ; Staging slots persist across rows: mask kills lanes >= q after reload.
+    %assign KK 0
+    %rep %1
+      %if KK < %1 - 1
+        vmovsd  xmm14, [r8 + KK*8]
+      %else
+        vmovsd  xmm14, [r11 + r12*8]  ; y at k = q-1
+      %endif
+        vsubsd  xmm14, xmm14, [rsi+V4_CLO + KK*8]
+        vmulsd  xmm14, xmm14, [rsi+V4_SW]  ; u_k = sw*(z_k - c_k)
+        vmovsd  [rsi+V4_ULO + KK*8], xmm14
+        %assign KK KK+1
+    %endrep
+    vmovupd ymm12, [rsi+V4_ULO]
+    vandpd  ymm12, ymm12, [rsi+V4_MASKL]   ; kill stale lanes >= q
+    vxorpd  ymm13, ymm13, ymm13       ; u_hi = 0 for q <= 4
+    vxorpd  ymm14, ymm14, ymm14
+    vcmppd  ymm14, ymm12, ymm12, 3    ; UNORD(u_lo)?
+    vmovmskpd eax, ymm14
+    test    eax, eax
+    jnz     .nonfinite
+%else
+.v4q%1:
+    ; Scalar in-bounds build for both halves (same scheme as q <= 4;
+    ; hi-half lanes >= q-4 masked after reload). c[k] for k >= 4 lives in
+    ; the CHI staging slot (the q>=5 dG~1.0 bug read CLO+32..56 — past the
+    ; 32B CLO slot into MASKL — so u[4..] subtracted mask bits).
+    %assign KK 0
+    %rep %1
+      %if KK < %1 - 1
+        vmovsd  xmm14, [r8 + KK*8]
+      %else
+        vmovsd  xmm14, [r11 + r12*8]  ; y at k = q-1
+      %endif
+      %if KK < 4
+        vsubsd  xmm14, xmm14, [rsi+V4_CLO + KK*8]
+      %else
+        vsubsd  xmm14, xmm14, [rsi+V4_CHI + (KK-4)*8]
+      %endif
+        vmulsd  xmm14, xmm14, [rsi+V4_SW]
+      %if KK < 4
+        vmovsd  [rsi+V4_ULO + KK*8], xmm14
+      %else
+        vmovsd  [rsi+V4_UHI + (KK-4)*8], xmm14
+      %endif
+        %assign KK KK+1
+    %endrep
+    vmovupd ymm12, [rsi+V4_ULO]
+    vmovupd ymm13, [rsi+V4_UHI]
+    vandpd  ymm12, ymm12, [rsi+V4_MASKL]
+    vandpd  ymm13, ymm13, [rsi+V4_MASKH]
+    vxorpd  ymm14, ymm14, ymm14
+    vcmppd  ymm14, ymm12, ymm12, 3
+    vmovmskpd eax, ymm14
+    test    eax, eax
+    jnz     .nonfinite
+    vcmppd  ymm14, ymm13, ymm13, 3
+    vmovmskpd eax, ymm14
+    test    eax, eax
+    jnz     .nonfinite
+%endif
+    ; ---- (u halves staged by the scalar build above) -----------------------
+    ; ---- acc_j += u_lo * bcast(u[j])   (j = 0..q-1, lo acc ymm_j)
+    ;      acc_j += u_hi * bcast(u[j])   (j = 4..q-1, hi acc ymm_{j+4})
+    ;      NOTE: at j >= 4, bcast(u[j]) is a UHI slot; u[j] for j < 4 is ULO.
+    %assign JJ 0
+    %rep %1
+      %assign LOR JJ
+      %assign HIR JJ+4
+      %if JJ < 4
+        vbroadcastsd ymm14, [rsi+V4_ULO + LOR*8]
+        vfmadd231pd ymm %+ LOR, ymm12, ymm14
+      %else
+        vbroadcastsd ymm14, [rsi+V4_UHI + (LOR-4)*8]
+        vfmadd231pd ymm %+ LOR, ymm12, ymm14     ; G[j][0..3] += u_lo*u[j]
+        vfmadd231pd ymm %+ HIR, ymm13, ymm14     ; G[j][4..7] += u_hi*u[j]
+      %endif
+        %assign JJ JJ+1
+    %endrep
+    ; ---- s batch: s_batch += sw * u = w(z-c) — lo, and hi when q > 4 ------
+    ; vmulpd (NOT vfmadd on ymm14: it still holds the last bcast u[j] — the
+    ; q=1 2x-s bug: FMA into a dirty destination added bcast(u[0]) + sw*u[0])
+    vbroadcastsd ymm15, [rsi+V4_SW]
+    vmulpd  ymm14, ymm12, ymm15       ; ymm14 = sw*u_lo (fresh dest)
+    vmovupd ymm15, [rsi+V4_SLO]
+    vaddpd  ymm15, ymm15, ymm14
+    vmovupd [rsi+V4_SLO], ymm15
+%if %1 > 4
+    vbroadcastsd ymm15, [rsi+V4_SW]
+    vmulpd  ymm14, ymm13, ymm15       ; ymm14 = sw*u_hi (fresh dest)
+    vmovupd ymm15, [rsi+V4_SHI]
+    vaddpd  ymm15, ymm15, ymm14
+    vmovupd [rsi+V4_SHI], ymm15
+%endif
+    jmp     .v4_tail
+%endmacro
+
+; ---- instantiate the 8 per-q row bodies -------------------------------------
+%assign VQ 1
+%rep 8
+    V4_ROW_BODY VQ
+    %assign VQ VQ+1
+%endrep
+
+; ---- v4 row tail: W batch accumulation + batch bookkeeping + loop ----------
+; xmm12..15 are FREE here (row temps); accs ymm0..11 are NOT touched.
+; The W batch plain sum lives in G2_WB (zeroed by the v3 prologue .zs path
+; — note .zs runs for BOTH paths since it zeroes G2_WB explicitly).
+.v4_tail:
+    test    r10, r10
+    jz      .v4_t_w1
+    vmovsd  xmm12, [r10 + r12*8]      ; w[i]
+    jmp     .v4_t_wh
+.v4_t_w1:
+    mov     eax, 1
+    vcvtsi2sd xmm12, xmm12, eax
+.v4_t_wh:
+    vmovsd  xmm13, [rsp+G2_WB]
+    vaddsd  xmm13, xmm13, xmm12
+    vmovsd  [rsp+G2_WB], xmm13
+    inc     r12
+    dec     r15
+    jnz     .v4_row
+    ; ---- batch boundary: fold s batch and W batch, reset ------------------
+    ; NO call/ret: a call pushes a return address BELOW rsp, shifting every
+    ; rsp-relative slot by 8 inside the callee (the q=4 garbage bug: s[2],
+    ; Wout read never-written memory). Straight-line jump chain instead.
+    jmp     .v4_fold_batch
+.v4_fold_batch:
+    ; per-column scalar Neumaier fold of the s batch sums into (s, s_c);
+    ; xmm12..15 + UC_RB scratch only (accs untouched). rsi = slot base.
+    xor     rcx, rcx                  ; k
+.v4_fb_k:
+    cmp     rcx, r14
+    jae     .v4_fb_w
+    lea     rdx, [rsi+V4_SLO]         ; k < 4 -> SLO slots
+    cmp     rcx, 4
+    jb      .v4_fb_lo
+    lea     rdx, [rsi+V4_SHI - 32]    ; k >= 4 -> SHI slot (k-4)*8 = k*8-32
+.v4_fb_lo:
+    vmovsd  xmm12, [rdx + rcx*8]      ; x = batch s sum, column k
+    mov     rax, [rsp+UC_S]
+    vmovsd  xmm13, [rax + rcx*8]      ; s
+    vaddsd  xmm14, xmm13, xmm12       ; t = s + x
+.v4_fb_impl:
+    mov     rax, 0x7FFFFFFFFFFFFFFF
+    vmovq   xmm15, rax
+    vandpd  xmm15, xmm15, xmm13       ; |s|
+    vmovq   rdx, xmm15                ; save |s| bits
+    vmovq   xmm15, rax
+    vandpd  xmm15, xmm15, xmm12       ; |x|
+    vmovq   [rsp+UC_RB], xmm15        ; |x| -> UC_RB (free slot in AVX2 path)
+    vmovq   xmm15, rdx                ; |s|
+    vucomisd xmm15, [rsp+UC_RB]       ; |s| vs |x|
+    jae     .v4_fb_e1
+    ; e2 = (x - t) + s
+    vsubsd  xmm15, xmm12, xmm14
+    vaddsd  xmm15, xmm15, xmm13
+    jmp     .v4_fb_have_e
+.v4_fb_e1:
+    ; e1 = (s - t) + x
+    vsubsd  xmm15, xmm13, xmm14
+    vaddsd  xmm15, xmm15, xmm12
+.v4_fb_have_e:
+    ; s_c[k] += e ; s[k] = t
+    mov     rax, [rsp+UC_S]
+    lea     rdx, [rsp + G2_SC]        ; s_c base
+    vmovsd  xmm12, [rdx + rcx*8]
+    vaddsd  xmm12, xmm12, xmm15
+    vmovsd  [rdx + rcx*8], xmm12
+    vmovsd  [rax + rcx*8], xmm14      ; s = t
+    inc     rcx
+    jmp     .v4_fb_k
+.v4_fb_w:
+    ; ---- W batch Neumaier fold: WS/WC += G2_WB (xmm12..15 only) ----------
+    vmovsd  xmm12, [rsp+G2_WB]        ; x = batch W
+    vmovsd  xmm13, [rsp+UC_WS]        ; s = WS
+    vaddsd  xmm14, xmm13, xmm12       ; t
+    mov     rax, 0x7FFFFFFFFFFFFFFF
+    vmovq   xmm15, rax
+    vandpd  xmm15, xmm15, xmm13       ; |s|
+    vmovq   rdx, xmm15                ; save |s|
+    vmovq   xmm15, rax
+    vandpd  xmm15, xmm15, xmm12       ; |x|
+    vmovq   [rsp+UC_RB], xmm15
+    vmovq   xmm15, rdx                ; |s|
+    vucomisd xmm15, [rsp+UC_RB]
+    jae     .v4_fb_we1
+    vsubsd  xmm15, xmm12, xmm14
+    vaddsd  xmm15, xmm15, xmm13
+    jmp     .v4_fb_whave
+.v4_fb_we1:
+    vsubsd  xmm15, xmm13, xmm14
+    vaddsd  xmm15, xmm15, xmm12
+.v4_fb_whave:
+    vmovsd  xmm12, [rsp+UC_WC]
+    vaddsd  xmm12, xmm12, xmm15
+    vmovsd  [rsp+UC_WC], xmm12
+    vmovsd  [rsp+UC_WS], xmm14        ; WS = t
+    vxorpd  xmm12, xmm12, xmm12
+    vmovsd  [rsp+G2_WB], xmm12        ; batch W = 0
+    jmp     .v4_folded                ; (was: ret — the call is gone)
+
+.v4_folded:
+    ; ---- reset the s batch sums; restart the batch counter ----------------
+    vxorpd  ymm12, ymm12, ymm12
+    vmovupd [rsi+V4_SLO], ymm12
+    vmovupd [rsi+V4_SHI], ymm12
+    mov     r15, V4_BATCH
+    jmp     .v4_row
+
+; ---- v4 final: fold the partial batch, extract G, final W, exit -----------
+.v4_fold_final:
+    ; The last batch is partial (r15 rows may be < V4_BATCH; r15 can be 0
+    ; only when n is a multiple of V4_BATCH — then SLO/SHI/G2_WB are zero
+    ; and every fold below is an exact no-op). Straight-line duplicate of
+    ; .v4_fold_batch (jump-target, no ret). rsi = V4 slot base.
+    xor     rcx, rcx
+    jmp     .v4_ff_k
+.v4_ff_k:
+    cmp     rcx, r14
+    jae     .v4_ff_w
+    lea     rdx, [rsi+V4_SLO]
+    cmp     rcx, 4
+    jb      .v4_ff_lo
+    lea     rdx, [rsi+V4_SHI - 32]
+.v4_ff_lo:
+    vmovsd  xmm12, [rdx + rcx*8]      ; x
+    mov     rax, [rsp+UC_S]
+    vmovsd  xmm13, [rax + rcx*8]      ; s
+    vaddsd  xmm14, xmm13, xmm12       ; t
+    mov     rax, 0x7FFFFFFFFFFFFFFF
+    vmovq   xmm15, rax
+    vandpd  xmm15, xmm15, xmm13       ; |s|
+    vmovq   rdx, xmm15
+    vmovq   xmm15, rax
+    vandpd  xmm15, xmm15, xmm12       ; |x|
+    vmovq   [rsp+UC_RB], xmm15
+    vmovq   xmm15, rdx                ; |s|
+    vucomisd xmm15, [rsp+UC_RB]
+    jae     .v4_ff_e1
+    vsubsd  xmm15, xmm12, xmm14
+    vaddsd  xmm15, xmm15, xmm13
+    jmp     .v4_ff_have
+.v4_ff_e1:
+    vsubsd  xmm15, xmm13, xmm14
+    vaddsd  xmm15, xmm15, xmm12
+.v4_ff_have:
+    mov     rax, [rsp+UC_S]
+    lea     rdx, [rsp + G2_SC]
+    vmovsd  xmm12, [rdx + rcx*8]
+    vaddsd  xmm12, xmm12, xmm15
+    vmovsd  [rdx + rcx*8], xmm12
+    vmovsd  [rax + rcx*8], xmm14
+    inc     rcx
+    jmp     .v4_ff_k
+.v4_ff_w:
+    ; final W fold (batch may be empty: G2_WB = 0, folding 0 is a no-op)
+    vmovsd  xmm12, [rsp+G2_WB]
+    vmovsd  xmm13, [rsp+UC_WS]
+    vaddsd  xmm14, xmm13, xmm12       ; t
+    mov     rax, 0x7FFFFFFFFFFFFFFF
+    vmovq   xmm15, rax
+    vandpd  xmm15, xmm15, xmm13       ; |s|
+    vmovq   rdx, xmm15
+    vmovq   xmm15, rax
+    vandpd  xmm15, xmm15, xmm12       ; |x|
+    vmovq   [rsp+UC_RB], xmm15
+    vmovq   xmm15, rdx
+    vucomisd xmm15, [rsp+UC_RB]
+    jae     .v4_ff_we1
+    vsubsd  xmm15, xmm12, xmm14
+    vaddsd  xmm15, xmm15, xmm13
+    jmp     .v4_ff_whave
+.v4_ff_we1:
+    vsubsd  xmm15, xmm13, xmm14
+    vaddsd  xmm15, xmm15, xmm12
+.v4_ff_whave:
+    vmovsd  xmm12, [rsp+UC_WC]
+    vaddsd  xmm12, xmm12, xmm15
+    vmovsd  [rsp+UC_WC], xmm12
+    vmovsd  [rsp+UC_WS], xmm14
+    ; ---- Wout = WS + WC ----------------------------------------------------
+    mov     rax, [rsp+UC_WOUT]
+    vmovsd  xmm12, [rsp+UC_WS]
+    vaddsd  xmm12, xmm12, [rsp+UC_WC]
+    vmovsd  [rax], xmm12
+    ; ---- s final: s[k] += s_c[k] ------------------------------------------
+    mov     rdx, [rsp+UC_S]
+    lea     rax, [rsp + G2_SC]
+    xor     rcx, rcx
+.v4_sf:
+    cmp     rcx, r14
+    jae     .v4_gext
+    vmovsd  xmm12, [rdx + rcx*8]
+    vaddsd  xmm12, xmm12, [rax + rcx*8]
+    vmovsd  [rdx + rcx*8], xmm12
+    inc     rcx
+    jmp     .v4_sf
+    ; ---- G extraction: G[j][k] = acc_j lane k, k <= j; lower zeroed -------
+    ; acc_j in ymm_j (j < 4 or j < q with lanes 0..3) and ymm_{j+4} (j >= 4,
+    ; lanes 4..7). Store each acc to ULO staging once, then scalar-pick.
+.v4_gext:
+    mov     rdi, [rsp+UC_G]
+    xor     rsi, rsi                  ; j  (rsi free: V4BASE reloaded per j)
+.v4_gj:
+    cmp     rsi, r14
+    jae     .v4_done
+    mov     rax, [rsp+G2_CUR]         ; V4 slot base ADDRESS
+    ; store acc_j (register chosen at ASSEMBLY time — q-loop unrolled by
+    ; macro? No: q is runtime. Register choice needs a j-switch. q <= 8:
+    ; an 8-way branch is fine for the epilogue.)
+    cmp     rsi, 0
+    jne     .v4_gj_n0
+    vmovupd [rax+V4_ULO], ymm0
+    jmp     .v4_gk
+.v4_gj_n0:
+    cmp     rsi, 1
+    jne     .v4_gj_n1
+    vmovupd [rax+V4_ULO], ymm1
+    jmp     .v4_gk
+.v4_gj_n1:
+    cmp     rsi, 2
+    jne     .v4_gj_n2
+    vmovupd [rax+V4_ULO], ymm2
+    jmp     .v4_gk
+.v4_gj_n2:
+    cmp     rsi, 3
+    jne     .v4_gj_n3
+    vmovupd [rax+V4_ULO], ymm3
+    jmp     .v4_gk
+.v4_gj_n3:
+    cmp     rsi, 4
+    jne     .v4_gj_n4
+    vmovupd [rax+V4_ULO], ymm4
+    jmp     .v4_gk
+.v4_gj_n4:
+    cmp     rsi, 5
+    jne     .v4_gj_n5
+    vmovupd [rax+V4_ULO], ymm5
+    jmp     .v4_gk
+.v4_gj_n5:
+    cmp     rsi, 6
+    jne     .v4_gj_n6
+    vmovupd [rax+V4_ULO], ymm6
+    jmp     .v4_gk
+.v4_gj_n6:
+    vmovupd [rax+V4_ULO], ymm7    ; j = 7 (q <= 8)
+.v4_gk:
+    ; k = 0..j: G[j][k] = ULO[k]  (lo lanes 0..3) or UHI[k-4] (k >= 4) —
+    ; for j >= 4 the hi acc holds lanes 4..7: it was NOT stored. Store BOTH
+    ; halves: hi acc of column j is ymm_{j+4} for 4 <= j < q.
+    cmp     rsi, 4
+    jb      .v4_gk_lo
+    ; store hi acc: register switch again (j+4 in ymm8..11)
+    cmp     rsi, 4
+    jne     .v4_gk_h5
+    vmovupd [rax+V4_UHI], ymm8
+    jmp     .v4_gk_go
+.v4_gk_h5:
+    cmp     rsi, 5
+    jne     .v4_gk_h6
+    vmovupd [rax+V4_UHI], ymm9
+    jmp     .v4_gk_go
+.v4_gk_h6:
+    cmp     rsi, 6
+    jne     .v4_gk_h7
+    vmovupd [rax+V4_UHI], ymm10
+    jmp     .v4_gk_go
+.v4_gk_h7:
+    vmovupd [rax+V4_UHI], ymm11
+.v4_gk_go:
+    ; fall through to the k loop with both halves staged
+.v4_gk_lo:
+    xor     rcx, rcx                  ; k
+    lea     rdx, [rdi + rsi*8]        ; &G[j][0]
+.v4_gkk:
+    cmp     rcx, rsi
+    ja      .v4_gz
+    cmp     rcx, 4
+    jae     .v4_gk_hi_lane
+    vmovsd  xmm12, [rax+V4_ULO + rcx*8]
+    vmovsd  [rdx], xmm12
+    jmp     .v4_gk_next
+.v4_gk_hi_lane:
+    vmovsd  xmm12, [rax+V4_UHI + rcx*8 - 32]
+    vmovsd  [rdx], xmm12
+    jmp     .v4_gk_next
+.v4_gz:
+    ; k > j: strictly-lower zero
+    vxorpd  xmm12, xmm12, xmm12
+    vmovsd  [rdx], xmm12
+.v4_gk_next:
+    add     rdx, [rsp+G2_Q8]          ; next row of column j (G row stride q*8)
+    inc     rcx
+    cmp     rcx, r14
+    jb      .v4_gkk
+    inc     rsi
+    jmp     .v4_gj
+.v4_done:
+    xor     eax, eax
+    jmp     .out
 
 ; ==============================================================================
 ; int32_t ols_gram_f64_sse2(const ols_gram_args_t *A)
