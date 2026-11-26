@@ -184,3 +184,18 @@ commit object with the correct message, same tree 9f020dc — files never
 changed, remote tree == local HEAD verified, 114 blobs, 0 mismatches).
 PR #3 OPEN: https://github.com/devansh1012007/linear_regression_assembly/pull/3
 CI GREEN at dbba48d (verify runs 45779189594 / 45779270083, both success).
+
+## 2026-11-26T09:45Z session-8.fix -> ALL [CORRECTION: H-labels + scoreboard]
+The end-of-phase scoreboard I wrote had two errors, now fixed everywhere:
+(1) The phase-5 docs (ADR-0009/phase5-report/README) mislabeled the
+asm-vs-OpenBLAS ladder comparison as "H2". PLAN's pre-registered H2 is
+asm-within-5%-of-intrinsics — which the SAME ladder data shows is GREEN
+(+3.2-3.4% at q=8, 2.1-2.4x faster at q=17). The OpenBLAS comparison is
+H1: RED (numpy wins 3 of 4; asm wins q=17 n=1e6 +11%). (2) "H6 not
+measured" was wrong — q=32/65 in-cache cases existed since gram-bench-v3;
+computing the verdict against the measured 57.62 GFLOP/s peak gives RED
+(36-37% / 49-50% vs the 70% gate; same load-port ceiling as G2). Fixed:
+README (phase-5 bullet + new full H1-H6/G2 verdict table), ADR-0009
+(correction note + H2/H6 verdicts added), phase5 report, performance.md,
+perf-log (phase-5 verdict block + correction entry). Labels moved,
+measurements untouched.

@@ -33,10 +33,12 @@ G2 is honestly RED: v3 kernel reaches 23–54% of the per-case binding bounds
   multithreaded Gram `ols_gram_mt` (row-partitioned pthreads, fixed-index-
   order merge; same-T bitwise reproducible, ADR-0008).
 - **Phase 5 ladder measured** (ADR-0009, `results/ladder.json`): honest
-  verdicts — H2 RED (OpenBLAS wins 3 of 4 cases; asm-v3 wins only the
-  q=17, n=1e6 DRAM-bound case, +11%), G2 RED (standing). The engine's
-  headline value is ACCURACY (12-15 LRE, kappa study) and the q>=16
-  DRAM-bound single-thread regime.
+  verdicts — H1 RED (OpenBLAS-backed numpy wins 3 of 4 cases; asm-v3 wins
+  only the q=17, n=1e6 DRAM-bound case, +11%), G2 RED (standing). [The
+  phase-5 docs originally labeled this H2; corrected 2026-11-26 — PLAN's
+  H2 is the asm-vs-intrinsics clause, see the hypothesis table below.]
+  The engine's headline value is ACCURACY (12-15 LRE, kappa study) and
+  the q>=16 DRAM-bound single-thread regime.
 - Critical fix this session: `ols_workspace_size` clobbered the caller's
   rbx (mov-then-push); every C caller could crash post-free.
 - **Phase 8 (2026-11-26): G2 CLOSED RED-with-evidence** (ADR-0012). The
@@ -63,6 +65,17 @@ G2 is honestly RED: v3 kernel reaches 23–54% of the per-case binding bounds
   docs/reports/phase3-accuracy.md.
 
 ## Results (generated from results/, never hand-typed)
+### Hypothesis verdicts (PLAN §2, one line each, measured not assumed)
+| # | Hypothesis (pre-registered) | Verdict | Evidence |
+|---|---|---|---|
+| H1 | Fused single-pass beats NumPy/SciPy pipelines by ~the pass-count ratio in the memory-bound regime | **RED** | `results/ladder.json`: OpenBLAS-backed numpy wins 3 of 4 cases (2.2x at q=8, threaded vs our single thread); asm-v3 wins exactly one — q=17 n=1e6 DRAM-bound, +11%. The pass-count-ratio model is falsified on this host: OpenBLAS's threading + throttled sandbox dominate. |
+| H2 | Hand-written asm within ~5% of well-written AVX2 intrinsics | **GREEN** | `results/ladder.json`: asm-v3 vs intrinsics(O2) = +3.4%/+3.2% at q=8 (within the 5% clause) and 2.1x-2.4x FASTER at q=17 (51.4-60.0 vs 24.0-24.8 ns/row). The value-is-control reading of PLAN holds. |
+| H3 | Dot2 accumulation costs <15% when memory-bound | **NOT BUILT** | Dot2 is a COULD-tier item, never built — no verdict. Recorded honestly rather than dropped. |
+| H4 | CSNE restores QR-like accuracy up to a measured kappa*; plain Gram+Cholesky fails near kappa ~ 1e8 | **CONFIRMED** | `results/accuracy/kappa-sweep.json` (+ plot): kappa* = 1e6 measured. |
+| H5 | N threads reach >= 85% of measured all-thread bandwidth | **RED (this host)** | `results/gram-bench-v4.json`: ols_gram_mt 2 threads = 6.76 GB/s (q=8) / 7.01 (q=17) vs 37.6 GB/s all-thread ceiling = 18-19%. 2-vCPU quota-capped KVM host; the rung is measured and committed for a bare-metal re-run. |
+| H6 | 6x8 tile >= 70% of measured FMA peak in cache, q+1 > p* | **RED** | `results/gram-bench-v3.json` (and v4 re-run): q=32 (n=4096, L2) = 21-22 GFLOP/s = 36-37% of the measured 57.62 GFLOP/s FMA peak; q=65 = 28 GFLOP/s = 49-50%. p* = 23.4 (machine.json), so both cases are in the FMA-bound regime. |
+| G2 | Fused Gram >= 85% of measured applicable bandwidth | **RED, CLOSED** | ADR-0012: v1 2% -> v3 22-54% -> v4 20% of bound across three evidence-backed iterations; load-port/issue-bound on this host; re-open conditions named. |
+
 - NIST StRD LRE (worst coefficient), simple fits: Norris 12.1, Pontius 11.9,
   NoInt1 14.7, NoInt2 15.0 — pre-registered gate was >= 10.
   Table: results/nist-phase1.json

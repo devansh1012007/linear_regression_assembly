@@ -73,7 +73,9 @@ report headlines it, and the README "status" section carries it.
   SciPy/OpenBLAS comparisons, n-scaling 1e3..1e7, observations/s and
   roofline-utilization curves are the Phase-5 deliverable (PLAN.md §Phase 5).
   H2 ("hand-written asm within ~5% of intrinsics") is explicitly falsifiable
-  and untested until then.
+  and untested until then. [Phase-5 measured, ladder.json: H2 GREEN —
+  +3.2-3.4% at q=8 (inside the clause), 2.1-2.4x faster at q=17. The
+  asm-vs-OpenBLAS result is H1 (RED); labels corrected 2026-11-26.]
 - **Threading**: single-threaded only; the roofline all-thread numbers
   (DRAM 37.6 GB/s) bound what N threads could recover (H5), but no threaded
   kernel exists.

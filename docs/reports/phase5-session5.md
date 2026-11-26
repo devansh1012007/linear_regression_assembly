@@ -43,7 +43,9 @@ The phase-4 open item is done. Two bugs found by binary-marker patching
 - `bench/ladder/` (C: naive-O2/O3, AVX2+FMA intrinsics, asm-v3; python:
   NumPy/OpenBLAS Z'Z) across n ∈ {2e5, 1e6} × q ∈ {8, 17};
   `results/ladder.json`.
-- **Honest verdicts: H2 RED, G2 RED.** OpenBLAS wins 3 of 4 cases (2.2x at
+- **Honest verdicts: H1 RED, G2 RED** [label corrected 2026-11-26: the
+  asm-vs-OpenBLAS comparison is PLAN's H1, not H2; the original report
+  wrote H2 — see ADR-0009's correction note]. OpenBLAS wins 3 of 4 cases (2.2x at
   q=8 — it uses the whole machine; the ladder's asm rung is single-
   threaded). asm-v3 wins exactly one: q=17, n=1e6 (DRAM-bound), +11%.
   Two recorded surprises: gcc -O3 made the intrinsics rung SLOWER
@@ -64,7 +66,7 @@ The phase-4 open item is done. Two bugs found by binary-marker patching
 
 ## Open next session
 1. Push via the resume kit once a PAT exists.
-2. Bare-metal re-run: ladder + ols_gram_mt scaling (G4/H2 verdicts may
+2. Bare-metal re-run: ladder + ols_gram_mt scaling (G4/H1 verdicts may
    change; the honest wording is already in ADR-0009).
 3. Optional: p-values (asm lgamma/incomplete beta) — the next accuracy
    feature in the COULD list.
