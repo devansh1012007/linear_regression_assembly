@@ -175,3 +175,12 @@ All MUST/SHOULD gates now green-or-closed-with-evidence; PLAN stretch
 list (COULD) unblocked. Remaining known-reds are host-bound (G2/H5)
 with re-open conditions named. If a bare-metal/AVX-512 host appears:
 re-run make repro + gram_bench_v4.py first (re-open G2 check).
+
+## 2026-11-26T09:05Z session-8 -> ALL [STATUS: PUSHED, PR #3 OPEN, CI GREEN]
+Discovery mid-push: PR #2 had been MERGED at 06:26Z (main tip 565afba) —
+so the P8 commits went to phase3-7 and needed a fresh PR. Pushed commit
+dbba48d (first push ec2b413 carried a stale script message; recreated the
+commit object with the correct message, same tree 9f020dc — files never
+changed, remote tree == local HEAD verified, 114 blobs, 0 mismatches).
+PR #3 OPEN: https://github.com/devansh1012007/linear_regression_assembly/pull/3
+CI GREEN at dbba48d (verify runs 45779189594 / 45779270083, both success).
