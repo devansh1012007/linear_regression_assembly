@@ -129,6 +129,9 @@ Format: `### date kernel | hypothesis | change | predicted | measured (median, C
   rdi/r11 read 0 from the frame slots — self-contradictory evidence, root
   cause not identified within the session. Probes preserved in
   src/dev/probes.tar.gz; next step documented in src/dev/README.md.
+  [note 2026-11-26: src/dev/ was moved to docs/dev/ at f810a0a and the
+  dev-scratch files (incl. probes.tar.gz) were removed at 210f08c; those
+  paths are historical]
 - DECISION per AGENTS §7 escalation: v1 kernel restored as the shipping
   implementation (differential/guard/NIST all green at this commit); v2 work
   parked in src/dev/. No performance claims for v2; G2 perf gate remains RED
@@ -140,9 +143,15 @@ Format: `### date kernel | hypothesis | change | predicted | measured (median, C
   (61 cy), q=17 24.4 (87 cy), q=32 50.5 (180 cy), q=65 152.9 (545 cy).
 - vs v1: 0.33 -> 3.73 GB/s (q=8, 11.3x), 0.26 -> 5.57 (q=17, 21.4x),
   0.24 -> 5.07 (q=32, 21.1x), 0.24 -> 3.40 (q=65, 14.2x).
+  [corrected 2026-11-26: the q=17 ratio is 19.9x in ns/row (v1 484.77
+  ns/row is the q=16 case in gram-bench.json; the 21.4x GB/s figure
+  crossed different bytes/row bases: 128 vs 136 B/row)]
 - vs machine bounds (2 FMA/cyc from characterize.py knee=15acc/57.62 GFLOPs;
   DRAM 16.2 GB/s 1t): q=8 23% (DRAM-bound 4.0 ns), q=17 34% (DRAM 8.4),
   q=32 44% (FMA-bound 22.4), q=65 54% (FMA-bound 83.3).
+  [corrected 2026-11-26: bound recomputed on the committed q·(q+1) model
+  = 74.5 ns → 48.7%, matching the H6 row; the 83.3 ns basis used an
+  older flop count]
 - Root causes found and fixed this iteration (2 of 3 used):
   1. SSE/VEX transition penalty (~2x): legacy movsd/ucomisd/subsd/mulsd
      after VEX ops on the same registers. ALL AVX2-region scalar ops are now
@@ -212,9 +221,10 @@ Surprises (honest):
 Verdicts (sandbox-relative, honestly caveated):
 - G2 (>= 85% of bandwidth): RED (was already; ladder adds context).
 - H1 (fused vs NumPy pipelines) [label corrected 2026-11-26; was
-  mislabeled "H2 (beat the ladder)"]: RED overall — numpy-blas wins 3
-  of 4 cases; asm-v3 wins only the q=17, n=1e6 DRAM-bound case (+11%
-  vs numpy). PLAN's actual H2 (asm within 5% of intrinsics) is GREEN
+  mislabeled "H2 (beat the ladder)"]: RED overall — numpy-blas wins
+  both q=8 cases decisively (2.2x); n=2e5, q=17 is a tie within noise
+  (24.19 vs 23.97 ns/row); asm-v3 wins the q=17, n=1e6 DRAM-bound case
+  (+10.9% vs numpy). PLAN's actual H2 (asm within 5% of intrinsics) is GREEN
   from the same data: +3.2-3.4% at q=8, 2.1-2.4x faster at q=17.
 - The ladder artifact (results/ladder.json + bench/ladder/) is ready for
   a bare-metal `make repro` re-run where OpenBLAS threads get the real
@@ -227,6 +237,8 @@ Machine truth recap (results/machine.json, unchanged): core ~3.57 GHz,
 (16.2-18.9 run-to-run on this shared KVM host), L2 143 GB/s. v3 measured
 (gram-bench-v3.json): q=8 17.17 ns/row (61 cy) = 22% of DRAM bound;
 q=17 24.42 ns/row (87 cy) = 23% of DRAM bound.
+[corrected 2026-11-26: 19.7% (q8) and 29.5% (q17) of the 18.89 GB/s
+DRAM bound]
 
 ## Prediction #28 — v4 fused kernel (q <= 8), written BEFORE implementation
 
@@ -319,10 +331,52 @@ verdicts that were missing entirely:
 
 - H2 (asm vs intrinsics): GREEN — +3.4%/+3.2% at q=8 (inside the 5%
   clause), 2.1-2.4x faster at q=17 (results/ladder.json).
-- H1 (fused vs NumPy pipelines): RED — numpy/OpenBLAS wins 3 of 4; asm
-  wins only q=17 n=1e6 (+11%).
+- H1 (fused vs NumPy pipelines): RED — numpy/OpenBLAS wins both q=8
+  cases decisively (2.24x / 2.31x), ties q=17 n=2e5 (24.19 vs 23.97
+  ns/row, within noise), loses q=17 n=1e6 (asm +10.9%).
 - H6 (6x8 tile >= 70% of FMA peak in cache): RED — measured 36-37% at
   q=32, 49-50% at q=65 (gram-bench-v3.json; re-measured in v4). The
   earlier "H6 not measured" statement was wrong: the data existed since
   the v3 benchmark; only the verdict had never been computed against the
   57.62 GFLOP/s measured peak.
+
+# Session 9 (2026-11-26): %.17g by hand — measured failure rates per scheme
+
+The freestanding CLI cannot call printf. Printing stats with 17
+significant digits (round-trip guarantee) took three attempts; every
+step was measured against libc %.17g on a 300k-case sweep
+(tests/c/outnum_test.c harness, rand-seeded mantissas x uniform binary
+exponents):
+
+- double rescale (v /= 10 to [1e16,1e17)): 192,598/300,000 mismatches.
+  The 17th digit is fiction: repeated decimal scaling in 53-bit
+  arithmetic rounds the wrong way more often than not.
+- long double rescale: 5,304/300,000 (1.8%) — better, still not
+  correct; cumulative rounding across up to ~340 decade steps.
+- + round-trip nudge (m +-1 while parse-back != v): made it WORSE
+  (299,502) — the nudge compared with the same imprecise rescale.
+- __float128 rescale + round-half-even: **0/300,000** (exact match with
+  libc). 113-bit mantissa keeps the accumulated relative error ~1e-31,
+  far below the 5e-17 needed at digit 17; half-even is required for the
+  ~112 exact-.5 cases per 300k.
+
+Related trap found while wiring the fs binary: ols_init(0) FORCE-selects
+SSE2 (auto is -1). The fs results were all ~1e-15 off the libc CLI until
+that was spotted — the documented sse2-vs-avx2 accumulation-order
+difference, not a bug. Machine truth: the ISA table is in ols.h; read it
+before passing magic constants.
+
+# Session 9: parser fuzz results (G4 clause 3)
+
+5-second seeded budget, results/fuzz-csv.json. Round 1: 21 failures /
+1,204 cases, root-caused to 4 CLI bugs (JSON key escaping, -nan tokens,
+unresolvable --features -> uninitialized X, invalid-UTF-8 names). After
+fixes + one fuzzer-side false-positive fix (getopt value-eating), clean
+on seed 42 (5,731 cases) and seed 1337 (26,055 cases in that run; the
+committed artifact results/fuzz-csv-seed1337.json, created at a 20 s
+budget, holds 23,956 — case count is timing-dependent at fixed budget).
+The bugs are locked by tests/py/cli_regression.py in make verify.
+
+### 2026-11-26 kernel/gram-mt-h5-study | measured | - | predicted: H5 needs >= 85% of all-thread DRAM BW | measured: 2t stream 33.41 GB/s -> gate 28.39 GB/s (14.20 GB/s/thread; 1t stream 17.74 reachable); ols_gram_mt mt2 q8 7.16 GB/s = 20.8% (p10-p90 18.8-23.4%), q17 6.63 GB/s = 19.5% (p10-p90 17.2-21.8%); per-thread kernel 3.58 GB/s (~4x shortfall); mt2/mt1 1.90x (q8) / 1.23x (q17); committed 18.0%/18.7% used the 37.6 GB/s basis | VERDICT: H5 RED (kernel-attributed, not host-quota: cgroup v1 cfs_quota -1, 0 throttle events, cpuset 0-1; bare-metal re-run would not flip it — re-open needs per-thread load throughput per ADR-0012) | evidence: results/gram-bench-mt-study.json
+
+### 2026-11-26 machine/avx512-probe | measured | - | predicted: AVX-512 material only if zmm/ymm FMA ratio > 1.4 and 64B loads move more bytes per load-uop | measured: zmm 93.59 vs ymm 50.84 GFLOP/s (ratio 1.84); L1 load 145.96 vs 118.84 GB/s (ratio 1.23); dram_1t 21.39, dram_2t 26.39 GB/s; p*_avx512 34.0 vs committed 23.4 (38.6 anchored to machine.json's 18.89 GB/s) | VERDICT: triage: see docs/reports/stretch-triage.md + results/avx512-probe.json | evidence: results/avx512-probe.json

@@ -14,10 +14,14 @@ hash-checked by the drift test (ADR-0006).
 | `sums.asm` | `ols_sum_f64_{sse2,avx2}`, `ols_centered_sums_f64_sse2`, `ols_simple_fit*` — Phase-1 primitives + fits |
 | `simple.asm` | `ols_quad_fit_f64_sse2` — quadratic basis fit |
 | `dot.asm`, `axpy.asm` | `ols_dot_f64_{sse2,avx2}`, `ols_axpy_f64_{sse2,avx2}` |
-| `gram.asm` | `ols_gram_f64_{sse2,avx2}` (v3 group-pipelined), `ols_gram_scratch_bytes` — fused shifted-Gram pass |
+| `gram.asm` | `ols_gram_f64_{sse2,avx2}` (v3 group-pipelined; v4 fused q≤8 body present but documented-unreachable — dispatch is v3, ADR-0012), `ols_gram_scratch_bytes` — fused shifted-Gram pass |
 | `chol.asm` | `ols_chol_f64_sse2` (factor), `ols_chol_solve_f64_sse2` (R R' solve), `ols_chol_inv_f64_sse2` — stride-aware |
 | `stats.asm` | `ols_residual_f64_sse2` (r, SSE, X'r), `ols_pivot_means_f64_sse2` |
 | `fit.asm` | `ols_workspace_size`, `ols_fit` — validation, orchestration, statistics |
+| `qr.asm` | `ols_qr_f64_sse2`, `ols_qr_solve_f64_sse2`, `ols_qr_pivot_f64_sse2` (+ `ols_qr_build_f64_sse2`) — Householder / column-pivoted QR (ADR-0007) |
+| `special.asm` | `ols_exp_f64_sse2`, `ols_log_f64_sse2`, `ols_lgamma_f64_sse2`, `ols_ibeta_f64_sse2`, t/F p-value wrappers, `ols_t_qvalue_f64_sse2`, `ols_confint_f64_sse2` (ADR-0010/0011) |
+
+Non-asm: `src/thread/ols_mt.c` (the one sanctioned C file, ADR-0008) provides `ols_gram_mt`.
 
 Every `global` carries a contract header (Args/Returns/Requires/Memory/
 Clobbers — `tools/lint_contracts.py` enforces it in `make verify`); integer
@@ -26,11 +30,11 @@ and Win64; struct-arg blocks (`ols_gram_args_t`, `ols_resid_args_t`) carry
 the >6-argument kernels; cross-object calls use `wrt ..plt` for PC32
 link-safety under `-shared`.
 
-## 2. `ols_fit` call graph (Tier-1, methods AUTO/GRAM_CHOL/GRAM_CSNE accepted)
+## 2. `ols_fit` call graph (Tier-1 gram path; methods AUTO/GRAM_CHOL/GRAM_CSNE/QR/QR_PIVOT accepted — `OLS_CG` reserved)
 
 ```
 ols_fit(prob, res, ws, ws_bytes)
- ├─ validate: struct_size/version, n≥q, p≤…, method≤2, ws ≥ ols_workspace_size
+ ├─ validate: struct_size/version, n≥q, p≤…, method≤4 (OLS_CG reserved → OLS_E_ARG), ws ≥ ols_workspace_size
  ├─ pivots:   ols_pivot_means_f64_sse2  (c = w-means of first min(n,256) rows; c=0 when no intercept)
  ├─ gram:     ols_gram_f64_{avx2,sse2}  (S, s, W shifted moments + G scratch)
  ├─ center:   G = S − s s'/W            (exact centering algebra, fit.asm loops)
@@ -46,8 +50,9 @@ ols_fit(prob, res, ws, ws_bytes)
  └─ meta:     rank=p, method_used, isa_used (fresh ols_isa), t = β/se (v2)
 ```
 
-Methods 3-5 (`OLS_QR`, `OLS_QR_PIVOT`, `OLS_CG`) currently return
-`OLS_E_ARG` — reserved, wired in Phase 3 (P3.5/P3.6, ADR-0007).
+Methods 3-4 (`OLS_QR`, `OLS_QR_PIVOT`) are wired (Phase 3/4, ADR-0007 —
+see `qr.asm` and the QR branch in `fit.asm`). `OLS_CG` (method 5) still
+returns `OLS_E_ARG` — reserved.
 
 ## 3. Workspace layout (doubles; total = 8·(q² + 3q + p + 2) + gram scratch + 64)
 
@@ -75,7 +80,7 @@ caller's buffer (the second corruption lesson).
   method_used (76), isa_used (80), pad (84), t* (88), f_stat (96)`.
   v1 callers (88 B) and v2 (96 B) keep working: v3 fields are the *last*
   append, and the error path zeroes every scalar through offset 96.
-- `ols_gram_args_t` 96 B / `ols_resid_args_t` 80 B: caller-built register
+- `ols_gram_args_t` 96 B / `ols_resid_args_t` 88 B: caller-built register
   blocks — one pointer deref instead of stack-spilled 7th+ args.
 
 ## 5. Test pyramid (what gates what)

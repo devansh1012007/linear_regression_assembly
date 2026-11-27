@@ -6,13 +6,15 @@ recorded in `perf-log.md` / `agent-comms.md`.
 
 ## 1. Assembly purity as a product property
 
-Everything under `src/` is NASM (`.asm` + `.inc`) plus `include/ols.h` — the
-C header *is* the ABI contract, not part of the core (rule 5). The core has
+Everything under `src/` is NASM (`.asm` + `.inc`) plus `include/ols.h` and
+one sanctioned C file, `src/thread/ols_mt.c` (ADR-0008) — the C header *is*
+the ABI contract, not part of the core (rule 5). The core has
 no libc, no syscalls, no allocation, no threads: `ols_fit` and every kernel
 run on caller-provided buffers. This is what makes the guard-page harness
 (meaningful), the ABI register probe (exhaustive), and a future static
-libc-free CLI (cheap) possible. C/Python exist only in `tests/ bench/ tools/`,
-and `tools/lint_contracts.py --check-src` enforces the purity line in CI.
+libc-free CLI (cheap) possible. C/Python otherwise live only in `tests/`,
+`bench/`, `tools/` and `cli/`, and `tools/lint_contracts.py --check-src`
+enforces the purity line in CI.
 
 ## 2. One contract surface, hash-verified
 
@@ -73,13 +75,13 @@ Predict-then-measure is mechanical: `perf-log.md` entries are written before
 benchmarking; gaps get root causes, not tolerance relaxations (rule 2/4).
 Gate G2 is the worked example: the pre-registered 85%-of-bandwidth target
 was missed by v1 (~2%), the v2 redesign was paused with a written negative
-result, v3 recovered 11.3-21.4× and *still* misses the gate — the gate stays
+result, v3 recovered 11.3-19.9× and *still* misses the gate — the gate stays
 red and the next iteration plan is recorded (`performance.md` §3). The
 pyramid (`tests/py/run_all.py`, L1-L8) is the single gate `make verify` runs.
 
 ## 7. What this design does not do (yet)
 
 Documented, deliberate gaps — each has an owner in `PLAN.md` §Phase 3/4/5:
-CSNE refinement and the QR solver (P3.3/P3.5), threading (Phase 4),
-binary I/O + CLI (Phase 4), the full baseline ladder against NumPy/OpenBLAS
-(Phase 5). The audit trail for scope decisions is `docs/adr/`.
+Dot2 (double-double) accumulation (H3), AVX-512 kernels, Win64/ARM64 ports,
+leverage/Cook's distance and the remaining COULD items (`PLAN.md` §3).
+The audit trail for scope decisions is `docs/adr/`.

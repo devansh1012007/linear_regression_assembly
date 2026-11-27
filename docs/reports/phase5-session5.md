@@ -45,9 +45,11 @@ The phase-4 open item is done. Two bugs found by binary-marker patching
   `results/ladder.json`.
 - **Honest verdicts: H1 RED, G2 RED** [label corrected 2026-11-26: the
   asm-vs-OpenBLAS comparison is PLAN's H1, not H2; the original report
-  wrote H2 — see ADR-0009's correction note]. OpenBLAS wins 3 of 4 cases (2.2x at
-  q=8 — it uses the whole machine; the ladder's asm rung is single-
-  threaded). asm-v3 wins exactly one: q=17, n=1e6 (DRAM-bound), +11%.
+  wrote H2 — see ADR-0009's correction note]. OpenBLAS wins both q=8
+  cases decisively (2.24x / 2.31x — it uses the whole machine; the
+  ladder's asm rung is single-threaded); n=2e5, q=17 is a statistical
+  tie (asm 23.97 vs numpy 24.19 ns/row, -0.9%); asm-v3 wins q=17, n=1e6
+  (DRAM-bound), +10.9%.
   Two recorded surprises: gcc -O3 made the intrinsics rung SLOWER
   (vectorizer broke the broadcast/FMA stripe); asm-v3's edge over compiled
   C grows with q (1.09x → 2.9x) but has no q=8 headroom here.

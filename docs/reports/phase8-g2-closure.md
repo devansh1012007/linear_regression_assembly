@@ -34,7 +34,7 @@ iteration, then closure with an impossibility argument.
 | q=32 n=4096 L2 | 48.88 | 5.24 | — (L2-resident) |
 | q=65 n=4096 L2 | 149.87 | 3.47 | — |
 | q=8 mt2 | 9.47 | 6.76 | 18% of 37.6 all-thread (H5 RED) |
-| q=17 mt2 | 19.39 | 7.01 | 19% |
+| q=17 mt2 | 19.39 | 7.01 | 18.7% |
 
 ## What I got wrong (this phase's own list)
 
@@ -56,14 +56,25 @@ iteration, then closure with an impossibility argument.
 
 ## Gate status after this phase
 
+> **Correction (2026-11-26, session 9):** the line below originally read
+> "G0/G1/G3/G4: green". The G4 claim was UNEARNED as written: of G4's four
+> clauses, only the E2E work existed, and the thread clause is H5 (RED on
+> this host). Session 9 built the missing artifacts (1e7 E2E, fuzz with a
+> 4-bug fix, freestanding CLI) and graded G4 as a split verdict — see the
+> phase-9 report and README. G0/G1/G3 remain green.
+
 - G2: RED, CLOSED with evidence (ADR-0012) — was the last open MUST-gate
   performance clause.
-- H5 (>= 85% of all-thread BW via N threads): RED on this host (18-19%
-  measured, 2-vCPU quota). The mt machinery itself is verified
+- H5 (>= 85% of all-thread BW via N threads): RED on this host (18.0% /
+  18.7% measured, 2-vCPU quota
+  [corrected 2026-11-26: no CFS quota exists — cpuset 2 CPUs; see
+  results/gram-bench-mt-study.json]). The mt machinery itself is verified
   (same-T bitwise reproducibility per ADR-0008 unchanged).
 - G0/G1/G3/G4: green (unchanged). Pyramid: ALL GREEN at final HEAD with
-  the v3 dispatch restored. Mutation: 28/34 killed (6 documented
-  survivors, results/mutation-phase1.json regenerated this session).
+  the v3 dispatch restored. Mutation: 28/34 killed = 0.8235
+  (results/mutation-phase1.json regenerated this session; 3 SURVIVED
+  rows, 2 provably equivalent documented in results/mutation-phase3.json
+  survivor_analysis).
 
 ## Files
 

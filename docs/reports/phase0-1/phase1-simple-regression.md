@@ -23,6 +23,10 @@
    `results/mutation-phase1.json` (4 = missing vzeroupper check [test gap,
    queued next session], 1 = missing sse2-axpy case [test gap], 6 = equivalent
    operand swaps, 1 = equivalent-by-recombination).
+   **[corrected 2026-11-26, session 3: this score was inflated — the
+   mutated objects never linked, so link failures counted as kills (honest
+   pre-lint score 3/34); results/mutation-phase1.json now holds the
+   repaired run: 34 mutants, 28/34 = 0.8235]**
 
 ## Bugs found and fixed (the honest list)
 - **Raw-moment cancellation (my formula error):** the first implementation
@@ -50,6 +54,9 @@
       11.9 (Pontius b0); Norris 12.1/14.4, NoInt1 14.7, NoInt2 15.0
 - [x] mutants killed or documented as equivalent (20/31 killed; 11 analyzed,
       5 are test gaps queued, 6 equivalent) — documented, not silent
+      **[corrected 2026-11-26: the phase-1 score was inflated by fake
+      link-fail kills (honest pre-lint 3/34); final honest score 28/34 =
+      0.8235 — see phase-3/phase-4 reports]**
 - [x] estimate-vs-actual recorded below
 
 ## Evidence

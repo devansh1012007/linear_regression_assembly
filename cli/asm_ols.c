@@ -38,6 +38,14 @@ typedef struct {
     double *data;          /* n_rows * n_cols */
 } dataset_t;
 
+/* Print a double as a JSON value: finite -> %.17g, non-finite -> null.
+ * The fuzzer showed overflow inputs (1e308 squared -> inf -> NaN stats)
+ * reaching the emitter as raw "-nan", which is invalid JSON. */
+static void json_num(double v) {
+    if (v == v && v < HUGE_VAL && v > -HUGE_VAL) printf("%.17g", v);
+    else fputs("null", stdout);
+}
+
 static uint32_t crc32_buf(const unsigned char *p, size_t n) {
     uint32_t c = 0xFFFFFFFFu;
     for (size_t i = 0; i < n; i++) {
@@ -46,6 +54,60 @@ static uint32_t crc32_buf(const unsigned char *p, size_t n) {
             c = (c >> 1) ^ (0xEDB88320u & (uint32_t)(-(int32_t)(c & 1)));
     }
     return c ^ 0xFFFFFFFFu;
+}
+
+/* Print s as the CONTENTS of a JSON string (no surrounding quotes).
+ * Column names come straight from the file, so ", \ and control chars
+ * must be escaped or the --json output is invalid JSON. Found by the
+ * Phase-4/G4 parser fuzzer (header 'y,"x1",x2' -> key ""x1""). */
+static void print_json_string(const char *s) {
+    for (; *s; s++) {
+        unsigned char c = (unsigned char)*s;
+        switch (c) {
+        case '"':  fputs("\\\"", stdout); break;
+        case '\\': fputs("\\\\", stdout); break;
+        case '\b': fputs("\\b", stdout); break;
+        case '\f': fputs("\\f", stdout); break;
+        case '\n': fputs("\\n", stdout); break;
+        case '\r': fputs("\\r", stdout); break;
+        case '\t': fputs("\\t", stdout); break;
+        default:
+            if (c < 0x20) printf("\\u%04x", c);
+            else putchar(c);
+        }
+    }
+}
+
+/* A column name usable as a JSON key and printable in human output:
+ * non-empty, no C0/DEL control bytes, and structurally valid UTF-8.
+ * (Fuzzer: a mutated .olsb name block put a raw 0x88 byte in a name and
+ * the fit emitted it verbatim -> invalid UTF-8 JSON. Reject at load.) */
+static int name_ok(const char *s) {
+    if (!s || !s[0]) return 0;
+    const unsigned char *p = (const unsigned char *)s;
+    while (*p) {
+        if (*p < 0x20 || *p == 0x7F) return 0;
+        if (*p < 0x80) { p++; continue; }            /* ASCII */
+        int len; unsigned lo = 0x80;
+        if      (*p >= 0xC2 && *p <= 0xDF) { len = 2; lo = 0x80; }
+        else if (*p == 0xE0)                { len = 3; lo = 0xA0; }
+        else if (*p >= 0xE1 && *p <= 0xEC)  { len = 3; lo = 0x80; }
+        else if (*p == 0xED)                { len = 3; lo = 0x80; } /* excl. surrogates via hi bound */
+        else if (*p >= 0xEE && *p <= 0xEF)  { len = 3; lo = 0x80; }
+        else if (*p == 0xF0)                { len = 4; lo = 0x90; }
+        else if (*p >= 0xF1 && *p <= 0xF3)  { len = 4; lo = 0x80; }
+        else if (*p == 0xF4)                { len = 4; lo = 0x80; }
+        else return 0;                                /* 0x80..0xC1, 0xF5.. lead bytes invalid */
+        if (p[0] > 0xF4) return 0;
+        for (int i = 1; i < len; i++) {
+            if ((p[i] & 0xC0) != 0x80) return 0;
+            if (i == 1 && p[i] < lo) return 0;        /* overlong guard */
+        }
+        if (len == 3 && p[0] == 0xED && p[1] >= 0xA0) return 0; /* surrogate */
+        if (len == 4 && p[0] == 0xF4 && p[1] > 0x8F) return 0;  /* > U+10FFFF */
+        p += len;
+    }
+    return 1;
 }
 
 static void ds_free(dataset_t *d) {
@@ -85,6 +147,12 @@ static int load_olsb(const char *path, dataset_t *d) {
         char *p = nb_buf;
         for (uint64_t j = 0; j < n_cols; j++) {
             if (p >= nb_buf + nb) { free(nb_buf); fprintf(stderr, "asm-ols: too few names\n"); goto fail; }
+            if (!name_ok(p)) {
+                free(nb_buf);
+                fprintf(stderr, "asm-ols: bad column name %llu (control byte or invalid UTF-8)\n",
+                        (unsigned long long)j);
+                goto fail;
+            }
             d->names[j] = strdup(p);
             p += strlen(p) + 1;
         }
@@ -129,6 +197,11 @@ static int load_csv(const char *path, dataset_t *d) {
             /* trim \r\n */
             char *e = p + strlen(p);
             while (e > p && (e[-1] == '\n' || e[-1] == '\r')) *--e = 0;
+            if (!name_ok(p)) {
+                fprintf(stderr, "asm-ols: bad column name %llu in header (control byte or invalid UTF-8)\n",
+                        (unsigned long long)j);
+                goto fail;
+            }
             d->names[j] = strdup(p);
             if (comma) p = comma + 1;
         }
@@ -208,6 +281,24 @@ static int cmd_fit(dataset_t *d, const char *target,
     int ti = col_index(d, target);
     if (ti < 0) { fprintf(stderr, "asm-ols: no column named '%s'\n", target); return 1; }
     if ((uint64_t)n_feat > d->n_cols - 1) { fprintf(stderr, "asm-ols: too many features\n"); return 1; }
+    /* every --features entry must name a real column, else X would be
+     * partially uninitialized (fuzzer: '--features --lambda' made getopt
+     * eat the next flag as the value and the fit ran on garbage). */
+    for (int k = 0; k < n_feat; k++) {
+        if (!feat[k] || !feat[k][0] || col_index(d, feat[k]) < 0
+            || col_index(d, feat[k]) == ti) {
+            fprintf(stderr, "asm-ols: --features entry '%s' is not a usable column\n",
+                    feat[k] ? feat[k] : "(empty)");
+            return 2;
+        }
+    }
+    /* duplicate feature entries would alias columns and double-count; reject */
+    for (int k = 0; k < n_feat; k++)
+        for (int q = k + 1; q < n_feat; q++)
+            if (strcmp(feat[k], feat[q]) == 0) {
+                fprintf(stderr, "asm-ols: duplicate --features entry '%s'\n", feat[k]);
+                return 2;
+            }
     uint64_t n = d->n_rows, p = (n_feat > 0) ? (uint64_t)n_feat : d->n_cols - 1;
     /* build X row-major (contiguous) + y */
     double *X = malloc((size_t)n * p * 8);
@@ -267,24 +358,39 @@ static int cmd_fit(dataset_t *d, const char *target,
                     if (col_index(d, feat[q]) == (int)j) keep = 1;
                 if (!keep) continue;
             }
-            printf("%s\"%s\": %.17g", k ? ", " : "", d->names[j], beta[k]);
+            printf("%s\"", k ? ", " : "");
+            print_json_string(d->names[j]);
+            printf("\": ");
+            json_num(beta[k]);
             k++;
         }
-        printf("},\n \"intercept_value\": %.17g,\n", res.intercept);
-        printf(" \"sse\": %.17g, \"sst\": %.17g, \"r2\": %.17g, \"r2_adj\": %.17g,\n",
-               res.sse, res.sst, res.r2, res.r2_adj);
+        printf("},\n \"intercept_value\": ");
+        json_num(res.intercept);
+        printf(",\n \"sse\": ");
+        json_num(res.sse);
+        printf(", \"sst\": ");
+        json_num(res.sst);
+        printf(", \"r2\": ");
+        json_num(res.r2);
+        printf(", \"r2_adj\": ");
+        json_num(res.r2_adj);
+        printf(",\n");
         /* inference (phase 7): two-sided t p-values per coefficient +
          * intercept, model F upper-tail p. df conventions match fit.asm:
          * t dof = n - p - intercept; F df = (p, n - p - intercept).
          * Rank-deficient fits zero se/t -> NaN p-values; JSON has no NaN
          * so those emit null (the %.17g of NaN would print "nan"). */
         double f_p = ols_f_pvalue_f64_sse2(res.f_stat, (double)p, (double)dof);
-        printf(" \"sigma2\": %.17g, \"cond_est\": %.17g, \"rank\": %d,\n",
-               res.sigma2, res.cond_est, res.rank);
-        if (f_p == f_p && f_p >= 0.0 && f_p <= 1.0)
-            printf(" \"f_stat\": %.17g, \"f_pvalue\": %.17g,\n", res.f_stat, f_p);
-        else
-            printf(" \"f_stat\": %.17g, \"f_pvalue\": null,\n", res.f_stat);
+        printf(" \"sigma2\": ");
+        json_num(res.sigma2);
+        printf(", \"cond_est\": ");
+        json_num(res.cond_est);
+        printf(", \"rank\": %d,\n", res.rank);
+        printf(" \"f_stat\": ");
+        json_num(res.f_stat);
+        printf(", \"f_pvalue\": ");
+        json_num(f_p);
+        printf(",\n");
         printf(" \"p_values\": {");
         {
             uint64_t k = 0;
@@ -297,18 +403,16 @@ static int cmd_fit(dataset_t *d, const char *target,
                     if (!keep) continue;
                 }
                 double pv = ols_t_pvalue_f64_sse2(t[k], (double)dof);
-                const char *v = (pv == pv && pv >= 0.0 && pv <= 1.0)
-                                ? NULL : "null";
-                if (v) printf("%s\"%s\": %s", k ? ", " : "", d->names[j], v);
-                else   printf("%s\"%s\": %.17g", k ? ", " : "", d->names[j], pv);
+                printf("%s\"", k ? ", " : "");
+                print_json_string(d->names[j]);
+                printf("\": ");
+                json_num(pv);
                 k++;
             }
             if (intercept) {
                 double pv = ols_t_pvalue_f64_sse2(t[p], (double)dof);
-                if (pv == pv && pv >= 0.0 && pv <= 1.0)
-                    printf(", \"(intercept)\": %.17g", pv);
-                else
-                    printf(", \"(intercept)\": null");
+                printf("%s\"(intercept)\": ", k ? ", " : "");
+                json_num(pv);
             }
         }
         if (conf_level > 0.0) {
@@ -325,15 +429,24 @@ static int cmd_fit(dataset_t *d, const char *target,
                 double lo, hi;
                 ols_confint_f64_sse2(beta[k2], se[k2], (double)dof,
                                      conf_level, &lo, &hi);
-                printf("%s\"%s\": [%.17g, %.17g]",
-                       k2 ? ", " : "", d->names[j], lo, hi);
+                printf("%s\"", k2 ? ", " : "");
+                print_json_string(d->names[j]);
+                printf("\": [");
+                json_num(lo);
+                printf(", ");
+                json_num(hi);
+                printf("]");
                 k2++;
             }
             if (intercept) {
                 double lo, hi;
                 ols_confint_f64_sse2(res.intercept, se[p], (double)dof,
                                      conf_level, &lo, &hi);
-                printf(", \"(intercept)\": [%.17g, %.17g]", lo, hi);
+                printf("%s\"(intercept)\": [", k2 ? ", " : "");
+                json_num(lo);
+                printf(", ");
+                json_num(hi);
+                printf("]");
             }
             printf("},\n \"conf_level\": %.17g,\n", conf_level);
         } else {

@@ -79,10 +79,14 @@ Minimum LRE vs certified values over all coefficients and the residual SD
 
 (\* polynomial basis in one variable, q = 6 columns.) Filip is beyond double
 precision for normal equations — κ(X) makes the Gram numerically singular —
-so the honest verdict is a documented refusal, not a wrong answer. A QR-based
-solver is the planned second opinion (ADR-0007, P3.5): it does not square the
-condition number and is expected to solve Filip partially or refuse with
-rank diagnostics; either outcome gets reported without a target (G3).
+so the honest verdict is a documented refusal, not a wrong answer. The
+QR-based second opinion (ADR-0007, P3.5) is since built —
+`results/nist-phase3.json` covers 11 datasets × {gram_chol, gram_csne,
+qr}; it does not square the condition number, and Filip is still refused
+at fit level (raw-kernel solve: rank 11, LRE 7.11 vs certified), reported
+without a target (G3). [reproducible via tests/py/test_qr.py vs the
+certified values; recorded in the P3.x commit messages, not a committed
+results artifact]
 
 ## 5. Property sweeps and the planned κ study
 
@@ -98,8 +102,11 @@ in `PLAN.md` §Phase 3 before measurement.
 
 - No accuracy claim survives without its differential: "matches NumPy" cites
   the test and tolerance; "agrees with mpmath" cites the case.
-- The κ = 1e8 study has not run yet — no statement about CSNE/QR accuracy
-  beyond the prediction above is admissible until it does.
+- The κ = 1e8 study ran in Phase 3 (`results/accuracy/kappa-sweep.json`):
+  H4 CONFIRMED — plain Gram+Cholesky loses ≈ 2·log10(κ) digits, CSNE is
+  QR-grade up to the measured κ* = 1e6, QR loses only log10(κ) digits
+  (13.5→8.0 at κ=1e8).
 - Weighted fits are differential-tested (`w` path in test_fit); ridge
-  (`lambda`) is accepted but not yet wired — an API-truth bug tracked as
-  P3.3b, not a silently wrong answer.
+  (`lambda`) is wired (Phase 3, P3.3b): slopes-only per the documented
+  contract, differential-pinned vs the mpmath ridge reference incl.
+  weighted designs.

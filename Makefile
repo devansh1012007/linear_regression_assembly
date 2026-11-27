@@ -26,7 +26,7 @@ TEST_BINS  = build/tests/test_abi build/tests/test_guard \
              build/tests/test_guard_full build/tests/test_guard_p2 \
              build/tests/test_upper_half
 
-.PHONY: all harness test verify lint bench bench-report repro clean
+.PHONY: all harness test verify lint bench bench-report plots repro clean
 .DEFAULT_GOAL := all
 
 all: harness
@@ -73,7 +73,19 @@ build/tests/test_upper_half: tests/guard/test_upper_half.c build/lib/libols.so |
 build/cli/asm-ols: cli/asm_ols.c build/lib/libols.so | build/lib
 	$(CC) $(CFLAGS) -Iinclude -o $@ cli/asm_ols.c -Lbuild/lib -lols -lm -Wl,-rpath,$(CURDIR)/build/lib
 
-harness: build/lib/libols.so build/lib/libols.a build/tests/libolstest.so build/cli/asm-ols $(TEST_BINS)
+# freestanding CLI (G4 clause 4, MoSCoW MUST "libc-free"): raw syscalls,
+# no libc, no dynamic section, NX stack. Links the PRODUCTION objects.
+build/cli/asm-ols-fs: cli/freestanding.c $(CORE_OBJS) | build/cli
+	$(CC) -O2 -std=c11 -Wall -Wextra -Werror -nostdlib -static -fno-stack-protector -fno-builtin \
+	  -Wl,--build-id=none -Wl,-z,noexecstack -Wl,-e,_start \
+	  -o $@ cli/freestanding.c $(CORE_OBJS) -lgcc
+	@readelf -d $@ | grep -q 'There is no dynamic section' \
+	  || (echo 'FAIL: dynamic section present in freestanding build' && exit 1)
+	@readelf -W -l $@ | grep GNU_STACK | grep -qv 'RWE' \
+	  || (echo 'FAIL: executable stack in freestanding build' && exit 1)
+	@echo 'freestanding OK: no dynamic section, NX stack ('$$(stat -c%s $@)' bytes)'
+
+harness: build/lib/libols.so build/lib/libols.a build/tests/libolstest.so build/cli/asm-ols build/cli/asm-ols-fs $(TEST_BINS)
 
 test: harness
 	./build/tests/test_abi && ./build/tests/test_guard && ./build/tests/test_guard_full && ./build/tests/test_guard_p2 && ./build/tests/test_upper_half
@@ -94,7 +106,11 @@ bench: harness
 bench-report:
 	$(PYTHON) tools/update_perflog.py
 
-repro: verify bench bench-report
+# DoD-3 evidence plots from committed raw results (no re-measurement)
+plots:
+	$(PYTHON) tools/make_plots.py
+
+repro: verify bench bench-report plots
 	@echo "repro: results under results/ regenerated from source"
 
 clean:

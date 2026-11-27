@@ -1,0 +1,1031 @@
+{
+ "schema": 1,
+ "study": "gram-mt-h5-variance-and-attribution",
+ "commit": "5755797",
+ "dirty": true,
+ "date": "2026-11-26T13:43:59+0000",
+ "host": {
+  "machine": "x86_64",
+  "os": "Linux 5.10.134-013.15.kangaroo.al8.x86_64",
+  "python": "3.12.16",
+  "nproc": 2,
+  "cpu_model": "Intel(R) Xeon(R) Processor",
+  "cpus_allowed": "0-1",
+  "mem_total_gib": 4.06
+ },
+ "toolchain": {
+  "python": "3.12.16"
+ },
+ "params": {
+  "kernel_protocol": {
+   "warmup": 3,
+   "reps": 30,
+   "seed": 20261121,
+   "bytes_per_row_formula": "8*(p+1)",
+   "n": 200000,
+   "cases": "q8 (p=7) / q17 (p=16), threads in {1,2}, same construction as gram_bench_v4.make_case_mt"
+  },
+  "ladder_protocol": {
+   "binary": "bench/machine/machine_bench (prebuilt, same binary that produced results/machine.json)",
+   "binary_mtime": "2026-11-20T06:41:28",
+   "method": "one outer sample = one machine_bench invocation (internal best-of-N, matching characterize.py); 2t = 2 concurrent processes, per-proc sizes as characterize.py",
+   "rungs": [
+    {
+     "rung": "L1",
+     "bytes_1t": 32768,
+     "internal_reps_1t": 30,
+     "bytes_2t_per_proc": 32768,
+     "internal_reps_2t": 30,
+     "outer_reps": 15
+    },
+    {
+     "rung": "L2",
+     "bytes_1t": 1048576,
+     "internal_reps_1t": 30,
+     "bytes_2t_per_proc": 1048576,
+     "internal_reps_2t": 30,
+     "outer_reps": 15
+    },
+    {
+     "rung": "L3",
+     "bytes_1t": 67108864,
+     "internal_reps_1t": 30,
+     "bytes_2t_per_proc": 67108864,
+     "internal_reps_2t": 30,
+     "outer_reps": 15
+    },
+    {
+     "rung": "DRAM",
+     "bytes_1t": 1610612736,
+     "internal_reps_1t": 8,
+     "bytes_2t_per_proc": 1073741824,
+     "internal_reps_2t": 6,
+     "outer_reps": 15
+    }
+   ]
+  },
+  "reps_floor_note": null,
+  "runtime_budget_note": "total wall 30.8 s (budget 600 s)"
+ },
+ "symbol_check": {
+  "lib_used_by_bench": "/home/z/my-project/asm-ols/build/tests/libolstest.so",
+  "nm_D_build_lib_libols_so": [
+   "00000000000094d0 T ols_gram_mt",
+   "0000000000009480 T ols_gram_mt_scratch_bytes"
+  ]
+ },
+ "cases": {
+  "q8_n200000_DRAM_mt1": {
+   "samples_s": [
+    0.003386983,
+    0.003352268,
+    0.003429694,
+    0.003456598,
+    0.003374002,
+    0.003359455,
+    0.003434895,
+    0.003432254,
+    0.003493262,
+    0.003363783,
+    0.003373906,
+    0.003351624,
+    0.004967619,
+    0.004258946,
+    0.00343789,
+    0.003344057,
+    0.003415729,
+    0.00351873,
+    0.003444447,
+    0.003444991,
+    0.003445333,
+    0.003346946,
+    0.003353651,
+    0.003362537,
+    0.00337005,
+    0.003363763,
+    0.003422873,
+    0.003445189,
+    0.003521603,
+    0.003449839
+   ],
+   "bytes_per_row": 64,
+   "threads": 1,
+   "seed": 20261121,
+   "sanity": {
+    "G00": 199839.8948348559,
+    "expected_n": 200000,
+    "rel_err": 0.0008005258257205424
+   },
+   "gbps_stats": {
+    "n": 30,
+    "median": 3.735829998409461,
+    "p10": 3.637379323868877,
+    "p90": 3.8183838363885827,
+    "min": 2.5766871412642556,
+    "max": 3.8276859515253476,
+    "mean": 3.6896869418811007,
+    "cv": 0.06957732175691685
+   },
+   "ns_per_row_stats": {
+    "n": 30,
+    "median": 17.131417499999998,
+    "p10": 16.761018,
+    "p90": 17.5950865,
+    "min": 16.720285,
+    "max": 24.838095,
+    "mean": 17.4538195,
+    "cv": 0.0925306930611573
+   }
+  },
+  "q8_n200000_DRAM_mt2": {
+   "samples_s": [
+    0.001798114,
+    0.001798036,
+    0.003502061,
+    0.001785898,
+    0.001806734,
+    0.001842137,
+    0.001775457,
+    0.001770652,
+    0.001857655,
+    0.001775071,
+    0.001814784,
+    0.001792247,
+    0.001785205,
+    0.001939163,
+    0.001775118,
+    0.001734457,
+    0.001756367,
+    0.001742224,
+    0.001769354,
+    0.001800577,
+    0.001789664,
+    0.001772164,
+    0.002714449,
+    0.001782552,
+    0.001768306,
+    0.00186276,
+    0.002008725,
+    0.001770277,
+    0.001760941,
+    0.00187937
+   ],
+   "bytes_per_row": 64,
+   "threads": 2,
+   "seed": 20261121,
+   "sanity": {
+    "G00": 199839.89483485726,
+    "expected_n": 200000,
+    "rel_err": 0.000800525825713703
+   },
+   "gbps_stats": {
+    "n": 30,
+    "median": 7.159721576528385,
+    "p10": 6.577927535494464,
+    "p90": 7.270733900981534,
+    "min": 3.654990589826962,
+    "max": 7.3798312670766695,
+    "mean": 6.907683117646996,
+    "cv": 0.11333804340469733
+   },
+   "ns_per_row_stats": {
+    "n": 30,
+    "median": 8.938905,
+    "p10": 8.802418,
+    "p90": 9.730595999999998,
+    "min": 8.672285,
+    "max": 17.510305,
+    "mean": 9.4550865,
+    "cv": 0.18583960946147218
+   }
+  },
+  "q17_n200000_DRAM_mt1": {
+   "samples_s": [
+    0.005043185,
+    0.005139097,
+    0.004994305,
+    0.005149002,
+    0.005020614,
+    0.005070508,
+    0.005049564,
+    0.005047549,
+    0.005154033,
+    0.005010599,
+    0.004985977,
+    0.004995224,
+    0.005187864,
+    0.005014281,
+    0.005057437,
+    0.005374284,
+    0.005037157,
+    0.005033255,
+    0.005010976,
+    0.004985934,
+    0.00503023,
+    0.005103598,
+    0.005004815,
+    0.005294607,
+    0.005011505,
+    0.005056375,
+    0.005010802,
+    0.005022636,
+    0.00509845,
+    0.005087864
+   ],
+   "bytes_per_row": 136,
+   "threads": 1,
+   "seed": 20261121,
+   "sanity": {
+    "G00": 199418.27893075332,
+    "expected_n": 200000,
+    "rel_err": 0.0029086053462333804
+   },
+   "gbps_stats": {
+    "n": 30,
+    "median": 5.396644226294825,
+    "p10": 5.273979112620597,
+    "p90": 5.445301453163345,
+    "min": 5.061139307115143,
+    "max": 5.455346982130129,
+    "mean": 5.367118359008638,
+    "cv": 0.01719074192552121
+   },
+   "ns_per_row_stats": {
+    "n": 30,
+    "median": 25.200854999999997,
+    "p10": 24.975660500000004,
+    "p90": 25.7870805,
+    "min": 24.92967,
+    "max": 26.87142,
+    "mean": 25.3469545,
+    "cv": 0.017744916630371185
+   }
+  },
+  "q17_n200000_DRAM_mt2": {
+   "samples_s": [
+    0.00386748,
+    0.004079,
+    0.004085033,
+    0.004156808,
+    0.004511587,
+    0.004051172,
+    0.004236606,
+    0.004075787,
+    0.004105251,
+    0.004137241,
+    0.00407873,
+    0.004110814,
+    0.00411131,
+    0.004821124,
+    0.004115464,
+    0.004169466,
+    0.004156035,
+    0.003946219,
+    0.004141449,
+    0.012691696,
+    0.004048559,
+    0.005449726,
+    0.004022424,
+    0.004055872,
+    0.003937154,
+    0.004102135,
+    0.004098245,
+    0.004131111,
+    0.004025052,
+    0.004088934
+   ],
+   "bytes_per_row": 136,
+   "threads": 2,
+   "seed": 20261121,
+   "sanity": {
+    "G00": 199418.27893075044,
+    "expected_n": 200000,
+    "rel_err": 0.002908605346247787
+   },
+   "gbps_stats": {
+    "n": 30,
+    "median": 6.628177088445588,
+    "p10": 5.990212367147349,
+    "p90": 6.77514991460213,
+    "min": 2.143133589080608,
+    "max": 7.033003402732529,
+    "mean": 6.403751076382486,
+    "cv": 0.13927988512246756
+   },
+   "ns_per_row_stats": {
+    "n": 30,
+    "median": 20.518465,
+    "p10": 20.074017500000004,
+    "p90": 22.712703499999996,
+    "min": 19.3374,
+    "max": 63.45848,
+    "mean": 22.267914,
+    "cv": 0.355605867047211
+   }
+  }
+ },
+ "stream_ladder": {
+  "L1": {
+   "bytes_1t": 32768,
+   "internal_reps_1t": 30,
+   "bytes_2t_per_proc": 32768,
+   "internal_reps_2t": 30,
+   "samples_1t_gbps": [
+    195.04809787358516,
+    195.04756991177888,
+    195.04756991177888,
+    196.21550671072885,
+    195.04756991177888,
+    195.04756991177888,
+    195.04809787358516,
+    195.04756991177888,
+    196.21550671072885,
+    196.21550671072885,
+    195.04809787358516,
+    195.04809787358516,
+    195.04756991177888,
+    195.04756991177888,
+    196.21604101430128
+   ],
+   "samples_2t_gbps": [
+    391.2630766225077,
+    391.2630766225077,
+    391.26361092608016,
+    391.263604584314,
+    391.26361092608016,
+    388.941552574913,
+    391.2630766225077,
+    391.2630766225077,
+    390.09513982355776,
+    391.2630766225077,
+    391.263604584314,
+    390.09513982355776,
+    390.095667785364,
+    391.263604584314,
+    391.2630766225077
+   ],
+   "stats_1t_gbps": {
+    "n": 15,
+    "median": 195.04809787358516,
+    "p10": 195.04756991177888,
+    "p90": 196.21550671072885,
+    "min": 195.04756991177888,
+    "max": 196.21604101430128,
+    "mean": 195.35919613488537,
+    "cv": 0.002736405807441882
+   },
+   "stats_2t_gbps": {
+    "n": 15,
+    "median": 391.2630766225077,
+    "p10": 390.09513982355776,
+    "p90": 391.2636083893737,
+    "min": 388.941552574913,
+    "max": 391.26361092608016,
+    "mean": 390.87493302316943,
+    "cv": 0.0018373250560937786
+   },
+   "paired_2t_over_1t": {
+    "n": 15,
+    "median": 2.005982528863694,
+    "p10": 1.9940444255763508,
+    "p90": 2.0059906850741305,
+    "min": 1.9880953669918473,
+    "max": 2.005990698079709,
+    "mean": 2.0008144569920923,
+    "cv": 0.003160577571714461
+   },
+   "paired_1t_share_of_2t": {
+    "n": 15,
+    "median": 0.4985088282730251,
+    "p10": 0.49850680137283165,
+    "p90": 0.5014933404569176,
+    "min": 0.49850679814082793,
+    "max": 0.5029939793648243,
+    "mean": 0.49980113756588884,
+    "cv": 0.0031667804871261017
+   }
+  },
+  "L2": {
+   "bytes_1t": 1048576,
+   "internal_reps_1t": 30,
+   "bytes_2t_per_proc": 1048576,
+   "internal_reps_2t": 30,
+   "samples_1t_gbps": [
+    143.5815403595707,
+    142.66340072773767,
+    144.97110654961898,
+    144.41206317472734,
+    143.69959985185932,
+    144.07474809499996,
+    144.15397450462103,
+    143.2676524608108,
+    144.21345151638283,
+    143.9165472614982,
+    142.83830292167542,
+    143.3852050354451,
+    143.83759051600936,
+    143.87705356756985,
+    142.4695666334129
+   ],
+   "samples_2t_gbps": [
+    287.4389362025153,
+    287.0269964372195,
+    287.76558002578383,
+    287.87274908156746,
+    286.6923476650498,
+    287.43863922094056,
+    287.83319923854674,
+    288.66588434534947,
+    287.8158584342227,
+    288.36741511665946,
+    287.3994641784224,
+    288.66603007764905,
+    286.9127180725178,
+    287.34085591512974,
+    286.4591837334427
+   ],
+   "stats_1t_gbps": {
+    "n": 15,
+    "median": 143.83759051600936,
+    "p10": 142.73336160531278,
+    "p90": 144.33261851138954,
+    "min": 142.4695666334129,
+    "max": 144.97110654961898,
+    "mean": 143.69078687839598,
+    "cv": 0.004727368510461724
+   },
+   "stats_2t_gbps": {
+    "n": 15,
+    "median": 287.4389362025153,
+    "p10": 286.780495828037,
+    "p90": 288.5464966538735,
+    "min": 286.4591837334427,
+    "max": 288.66603007764905,
+    "mean": 287.5797238496678,
+    "cv": 0.0023034690350495937
+   },
+   "paired_2t_over_1t": {
+    "n": 15,
+    "median": 1.9971277475472078,
+    "p10": 1.9939268949909421,
+    "p90": 2.012756922467924,
+    "min": 1.9849857456064244,
+    "max": 2.0148713222219556,
+    "mean": 2.001414369110346,
+    "cv": 0.004562300803174415
+   },
+   "paired_1t_share_of_2t": {
+    "n": 15,
+    "median": 0.5007190958255724,
+    "p10": 0.4968310223690368,
+    "p90": 0.5015229507658083,
+    "min": 0.4963096099344062,
+    "max": 0.5037819552172624,
+    "mean": 0.4996563598650303,
+    "cv": 0.004560207264092415
+   }
+  },
+  "L3": {
+   "bytes_1t": 67108864,
+   "internal_reps_1t": 30,
+   "bytes_2t_per_proc": 67108864,
+   "internal_reps_2t": 30,
+   "samples_1t_gbps": [
+    27.70227170250778,
+    27.875867006852094,
+    27.826834625725528,
+    24.04671110568599,
+    23.02210619069569,
+    24.53420918653027,
+    22.56998258976372,
+    23.90408852021967,
+    27.823004383905964,
+    27.36608456386661,
+    27.759153520879824,
+    26.815432299961177,
+    23.273146960518762,
+    27.07374826446161,
+    22.420523392435303
+   ],
+   "samples_2t_gbps": [
+    55.10505386488252,
+    55.63386327834446,
+    51.517499955347425,
+    49.01797503259048,
+    52.78057830040843,
+    50.944575938460154,
+    51.45236335056664,
+    51.64733029996296,
+    50.64797872340564,
+    49.65674671126116,
+    51.39274059835077,
+    49.672861155740144,
+    49.763475058180894,
+    47.56624406320017,
+    50.30269872621145
+   ],
+   "stats_1t_gbps": {
+    "n": 15,
+    "median": 26.815432299961177,
+    "p10": 22.750832030136507,
+    "p90": 27.8253025289977,
+    "min": 22.420523392435303,
+    "max": 27.875867006852094,
+    "mean": 25.600877620934,
+    "cv": 0.08653136357944123
+   },
+   "stats_2t_gbps": {
+    "n": 15,
+    "median": 50.944575938460154,
+    "p10": 49.27348370405875,
+    "p90": 54.17526363909288,
+    "min": 47.56624406320017,
+    "max": 55.63386327834446,
+    "mean": 51.140132337127554,
+    "cv": 0.04170142028934566
+   },
+   "paired_2t_over_1t": {
+    "n": 15,
+    "median": 1.99577158495803,
+    "p10": 1.816866981979668,
+    "p90": 2.2652488982973984,
+    "min": 1.7569138782913951,
+    "max": 2.2926042414720302,
+    "mean": 2.0107706720272533,
+    "cv": 0.09068739902921816
+   },
+   "paired_1t_share_of_2t": {
+    "n": 15,
+    "median": 0.5010593434323445,
+    "p10": 0.4414795593957377,
+    "p90": 0.5503993838113324,
+    "min": 0.43618518273259504,
+    "max": 0.5691798626876939,
+    "mean": 0.5011162150309375,
+    "cv": 0.08967013764830144
+   }
+  },
+  "DRAM": {
+   "bytes_1t": 1610612736,
+   "internal_reps_1t": 8,
+   "bytes_2t_per_proc": 1073741824,
+   "internal_reps_2t": 6,
+   "samples_1t_gbps": [
+    17.741613127954146,
+    18.010655277096873,
+    18.092056183075606,
+    18.090588991994224,
+    16.15344046402795,
+    16.601143408395448,
+    19.203139627710172,
+    19.096318920268374,
+    16.723075912702498,
+    16.737994172049998,
+    16.779283697217124,
+    16.568145846664038,
+    16.70388282244965,
+    17.861200539321064,
+    17.75996338920979
+   ],
+   "samples_2t_gbps": [
+    35.43279395767492,
+    35.42937325905037,
+    35.715508150351255,
+    34.37188134148728,
+    32.281353409839326,
+    30.233323232913826,
+    37.58709875970903,
+    35.01950246285458,
+    32.8264942905302,
+    33.405708581306264,
+    33.118975012676366,
+    33.29360572356653,
+    29.275359989811232,
+    34.94055674548352,
+    32.31805614521166
+   ],
+   "stats_1t_gbps": {
+    "n": 15,
+    "median": 17.741613127954146,
+    "p10": 16.5813448713566,
+    "p90": 18.69461382539127,
+    "min": 16.15344046402795,
+    "max": 19.203139627710172,
+    "mean": 17.47483349200913,
+    "cv": 0.054035802598956365
+   },
+   "stats_2t_gbps": {
+    "n": 15,
+    "median": 33.405708581306264,
+    "p10": 31.052535303684024,
+    "p90": 35.60242247328072,
+    "min": 29.275359989811232,
+    "max": 37.58709875970903,
+    "mean": 33.683306070831094,
+    "cv": 0.06434430678041833
+   },
+   "paired_2t_over_1t": {
+    "n": 15,
+    "median": 1.962945959337294,
+    "p10": 1.8202921080859604,
+    "p90": 1.9979147714782415,
+    "min": 1.7526080792703953,
+    "max": 2.0094949689418704,
+    "mean": 1.9279816663811544,
+    "cv": 0.04231233311834795
+   },
+   "paired_1t_share_of_2t": {
+    "n": 15,
+    "median": 0.509438375133673,
+    "p10": 0.5005218991767371,
+    "p90": 0.5493624604354087,
+    "min": 0.49763747382087997,
+    "max": 0.5705782210112237,
+    "mean": 0.5195807538783698,
+    "cv": 0.04406124499341975
+   }
+  }
+ },
+ "h5_analysis": {
+  "gate": "H5: N threads reach >= 85% of the measured all-thread bandwidth (all-thread = 2 threads on this 2-CPU host)",
+  "threshold_fraction": 0.85,
+  "allt_2t_gbps_stats": {
+   "n": 15,
+   "median": 33.405708581306264,
+   "p10": 31.052535303684024,
+   "p90": 35.60242247328072,
+   "min": 29.275359989811232,
+   "max": 37.58709875970903,
+   "mean": 33.683306070831094,
+   "cv": 0.06434430678041833
+  },
+  "allt_1t_gbps_stats": {
+   "n": 15,
+   "median": 17.741613127954146,
+   "p10": 16.5813448713566,
+   "p90": 18.69461382539127,
+   "min": 16.15344046402795,
+   "max": 19.203139627710172,
+   "mean": 17.47483349200913,
+   "cv": 0.054035802598956365
+  },
+  "paired_1t_share_of_2t": {
+   "n": 15,
+   "median": 0.509438375133673,
+   "p10": 0.5005218991767371,
+   "p90": 0.5493624604354087,
+   "min": 0.49763747382087997,
+   "max": 0.5705782210112237,
+   "mean": 0.5195807538783698,
+   "cv": 0.04406124499341975
+  },
+  "paired_2t_scaling": {
+   "n": 15,
+   "median": 1.962945959337294,
+   "p10": 1.8202921080859604,
+   "p90": 1.9979147714782415,
+   "min": 1.7526080792703953,
+   "max": 2.0094949689418704,
+   "mean": 1.9279816663811544,
+   "cv": 0.04231233311834795
+  },
+  "h5_target_gbps": {
+   "median": 28.394852294110322,
+   "p10": 26.39465500813142,
+   "p90": 30.26205910228861
+  },
+  "dram_1t_share_of_2t": 0.5310952493276044,
+  "stream_scaling_2t_over_1t": 1.8829014216678732,
+  "q8": {
+   "mt2_gbps_stats": {
+    "n": 30,
+    "median": 7.159721576528385,
+    "p10": 6.577927535494464,
+    "p90": 7.270733900981534,
+    "min": 3.654990589826962,
+    "max": 7.3798312670766695,
+    "mean": 6.907683117646996,
+    "cv": 0.11333804340469733
+   },
+   "mt1_gbps_stats": {
+    "n": 30,
+    "median": 3.735829998409461,
+    "p10": 3.637379323868877,
+    "p90": 3.8183838363885827,
+    "min": 2.5766871412642556,
+    "max": 3.8276859515253476,
+    "mean": 3.6896869418811007,
+    "cv": 0.06957732175691685
+   },
+   "efficiency_mt2_over_mt1": {
+    "n": 900,
+    "median": 1.9007450029231352,
+    "p10": 1.7338556892845003,
+    "p90": 1.9821269526455072,
+    "min": 0.9548825677222642,
+    "max": 2.8640773452440733,
+    "mean": 1.8838352234157487,
+    "cv": 0.14429055876438826
+   },
+   "pct_of_new_2t_allt": {
+    "n": 450,
+    "median": 20.806622790500263,
+    "p10": 18.751491694925836,
+    "p90": 23.43699970593066,
+    "min": 9.724056153397182,
+    "max": 25.208336531626212,
+    "mean": 20.58965704739784,
+    "cv": 0.12895258906432983
+   },
+   "h5_target_ns_per_row_median": 2.2539296678530327,
+   "mt2_ns_per_row_stats": {
+    "n": 30,
+    "median": 8.938905,
+    "p10": 8.802418,
+    "p90": 9.730595999999998,
+    "min": 8.672285,
+    "max": 17.510305,
+    "mean": 9.4550865,
+    "cv": 0.18583960946147218
+   },
+   "per_thread_kernel_gbps_median": 3.5798607882641926,
+   "per_thread_share_of_1t_stream": 0.20177763783067004,
+   "needed_per_thread_gbps_for_h5": 14.197426147055161,
+   "needed_per_thread_speedup_vs_measured": 3.965915712029469,
+   "h5_per_thread_within_1t_stream": true
+  },
+  "q17": {
+   "mt2_gbps_stats": {
+    "n": 30,
+    "median": 6.628177088445588,
+    "p10": 5.990212367147349,
+    "p90": 6.77514991460213,
+    "min": 2.143133589080608,
+    "max": 7.033003402732529,
+    "mean": 6.403751076382486,
+    "cv": 0.13927988512246756
+   },
+   "mt1_gbps_stats": {
+    "n": 30,
+    "median": 5.396644226294825,
+    "p10": 5.273979112620597,
+    "p90": 5.445301453163345,
+    "min": 5.061139307115143,
+    "max": 5.455346982130129,
+    "mean": 5.367118359008638,
+    "cv": 0.01719074192552121
+   },
+   "efficiency_mt2_over_mt1": {
+    "n": 900,
+    "median": 1.2302685484254825,
+    "p10": 1.105148299257002,
+    "p90": 1.2845774728587256,
+    "min": 0.39285009663011144,
+    "max": 1.3896087374724628,
+    "mean": 1.1934969644293596,
+    "cv": 0.13814323987989283
+   },
+   "pct_of_new_2t_allt": {
+    "n": 450,
+    "median": 19.49853883939459,
+    "p10": 17.176253270249102,
+    "p90": 21.793994173222472,
+    "min": 5.701779759011117,
+    "max": 24.02362739580398,
+    "mean": 19.087592212037272,
+    "cv": 0.1516706518091634
+   },
+   "h5_target_ns_per_row_median": 4.789600544187694,
+   "mt2_ns_per_row_stats": {
+    "n": 30,
+    "median": 20.518465,
+    "p10": 20.074017500000004,
+    "p90": 22.712703499999996,
+    "min": 19.3374,
+    "max": 63.45848,
+    "mean": 22.267914,
+    "cv": 0.355605867047211
+   },
+   "per_thread_kernel_gbps_median": 3.314088544222794,
+   "per_thread_share_of_1t_stream": 0.18679747553513215,
+   "needed_per_thread_gbps_for_h5": 14.197426147055161,
+   "needed_per_thread_speedup_vs_measured": 4.283961022044655,
+   "h5_per_thread_within_1t_stream": true
+  },
+  "committed_machine_json_context": {
+   "date": "2026-11-20T07:06:39+00:00",
+   "gbps_1t": 18.89,
+   "gbps_allt": 37.6,
+   "1t_share_of_allt": 0.502,
+   "allt_today_vs_committed": 0.888
+  },
+  "dram_1t_share_of_2t_paired_median": 0.509438375133673,
+  "attribution_case": "A",
+  "attribution_case_text": "single-thread DRAM stream is only 51% of the 2-thread aggregate (time-paired median; spread 50-55%; block medians 17.74 vs 33.41 GB/s, scaling 1.88x): DRAM is NOT single-thread-saturated on this host \u2014 mt2 has real headroom, so the H5 RED is NOT excusable as a saturated memory ceiling; it is kernel-side (per-thread throughput), not ceiling-side"
+ },
+ "cgroup_check": {
+  "proc_self_cgroup": "11:name=systemd:/k8s.io/c-6b082dab-140d72b5-1bd98948fa59\n10:devices:/k8s.io/c-6b082dab-140d72b5-1bd98948fa59\n9:blkio:/k8s.io/c-6b082dab-140d72b5-1bd98948fa59\n8:net_cls,net_prio:/k8s.io/c-6b082dab-140d72b5-1bd98948fa59\n7:perf_event:/k8s.io/c-6b082dab-140d72b5-1bd98948fa59\n6:cpuset:/k8s.io/c-6b082dab-140d72b5-1bd98948fa59\n5:memory:/k8s.io/c-6b082dab-140d72b5-1bd98948fa59\n4:cpu,cpuacct:/k8s.io/c-6b082dab-140d72b5-1bd98948fa59\n3:hugetlb:/k8s.io/c-6b082dab-140d72b5-1bd98948fa59\n2:freezer:/k8s.io/c-6b082dab-140d72b5-1bd98948fa59\n1:pids:/k8s.io/c-6b082dab-140d72b5-1bd98948fa59\n0::/",
+  "cpu_max_v2_path": "<unreadable: [Errno 2] No such file or directory: '/sys/fs/cgroup/cpu.max'>",
+  "cpu_cfs_quota_us_v1": "-1",
+  "cpu_cfs_period_us_v1": "100000",
+  "cpu_stat_v1": "nr_periods 0\nnr_throttled 0\nthrottled_time 0\ncurrent_bw 0\nnr_burst 0\nburst_time 0",
+  "cpu_shares_v1": "18432",
+  "cpuset_cpus_v1": "0-1",
+  "cpus_allowed_list": "0-1",
+  "os_cpu_count": 2,
+  "sched_getaffinity": [
+   0,
+   1
+  ],
+  "taskset_0_1_true_rc": 0,
+  "cgroup_version": "cgroup v1 mounted (v2 /sys/fs/cgroup/cpu.max path absent; /proc/self/cgroup shows v1 controllers)",
+  "checks": {
+   "cfs_quota_unlimited": true,
+   "zero_throttle_events": true,
+   "exactly_two_cpus_visible": true
+  },
+  "quota_claim_verdict": "The '2-vCPU quota' attribution does NOT hold as a CFS quota: cpu.cfs_quota_us = -1 (unlimited), cpu.stat shows 0 throttle events, and the v2 cpu.max path does not exist on this cgroup-v1 host. The honest attribution is: '2 CPUs visible to the container (cpuset 0-1 / Cpus_allowed_list 0-1), no cfs quota' \u2014 the container is sized by CPU visibility, not throttled by a bandwidth quota; residual run-to-run variance comes from the shared physical host (noisy neighbors), consistent with the 16.2-18.9 GB/s run-to-run DRAM spread already noted in results/machine.json."
+ },
+ "continuity": {
+  "gram_bench_v4_gbps": {
+   "q8_n200000_DRAM": 3.6872582757343264,
+   "q17_n200000_DRAM": 5.562550212496577,
+   "q8_n200000_DRAM_mt2": 6.7577430933093865,
+   "q17_n200000_DRAM_mt2": 7.012530515464822
+  },
+  "machine_json_ladder_gbps": {
+   "DRAM_1t": 18.89,
+   "DRAM_allt": 37.6,
+   "L1_1t": 195.05,
+   "L2_1t": 143.13,
+   "L3_1t": 29.14
+  },
+  "committed_h5_pct_of_37p6": {
+   "q8_mt2_vs_37p6": 17.972720992844113,
+   "q17_mt2_vs_37p6": 18.650347115597928
+  }
+ },
+ "summary_table": [
+  {
+   "config": "q8_n200000_DRAM_mt1",
+   "unit": "GB/s",
+   "median": 3.7358,
+   "p10": 3.6374,
+   "p90": 3.8184,
+   "min": 2.5767,
+   "max": 3.8277,
+   "cv_pct": 6.958
+  },
+  {
+   "config": "q8_n200000_DRAM_mt1",
+   "unit": "ns/row",
+   "median": 17.1314,
+   "p10": 16.761,
+   "p90": 17.5951,
+   "min": 16.7203,
+   "max": 24.8381,
+   "cv_pct": 9.253
+  },
+  {
+   "config": "q8_n200000_DRAM_mt2",
+   "unit": "GB/s",
+   "median": 7.1597,
+   "p10": 6.5779,
+   "p90": 7.2707,
+   "min": 3.655,
+   "max": 7.3798,
+   "cv_pct": 11.334
+  },
+  {
+   "config": "q8_n200000_DRAM_mt2",
+   "unit": "ns/row",
+   "median": 8.9389,
+   "p10": 8.8024,
+   "p90": 9.7306,
+   "min": 8.6723,
+   "max": 17.5103,
+   "cv_pct": 18.584
+  },
+  {
+   "config": "q17_n200000_DRAM_mt1",
+   "unit": "GB/s",
+   "median": 5.3966,
+   "p10": 5.274,
+   "p90": 5.4453,
+   "min": 5.0611,
+   "max": 5.4553,
+   "cv_pct": 1.719
+  },
+  {
+   "config": "q17_n200000_DRAM_mt1",
+   "unit": "ns/row",
+   "median": 25.2009,
+   "p10": 24.9757,
+   "p90": 25.7871,
+   "min": 24.9297,
+   "max": 26.8714,
+   "cv_pct": 1.774
+  },
+  {
+   "config": "q17_n200000_DRAM_mt2",
+   "unit": "GB/s",
+   "median": 6.6282,
+   "p10": 5.9902,
+   "p90": 6.7751,
+   "min": 2.1431,
+   "max": 7.033,
+   "cv_pct": 13.928
+  },
+  {
+   "config": "q17_n200000_DRAM_mt2",
+   "unit": "ns/row",
+   "median": 20.5185,
+   "p10": 20.074,
+   "p90": 22.7127,
+   "min": 19.3374,
+   "max": 63.4585,
+   "cv_pct": 35.561
+  },
+  {
+   "config": "stream_L1",
+   "unit": "GB/s 1t",
+   "median": 195.048,
+   "p10": 195.048,
+   "p90": 196.216,
+   "min": 195.048,
+   "max": 196.216,
+   "cv_pct": 0.274
+  },
+  {
+   "config": "stream_L1",
+   "unit": "GB/s 2t",
+   "median": 391.263,
+   "p10": 390.095,
+   "p90": 391.264,
+   "min": 388.942,
+   "max": 391.264,
+   "cv_pct": 0.184
+  },
+  {
+   "config": "stream_L2",
+   "unit": "GB/s 1t",
+   "median": 143.838,
+   "p10": 142.733,
+   "p90": 144.333,
+   "min": 142.47,
+   "max": 144.971,
+   "cv_pct": 0.473
+  },
+  {
+   "config": "stream_L2",
+   "unit": "GB/s 2t",
+   "median": 287.439,
+   "p10": 286.78,
+   "p90": 288.546,
+   "min": 286.459,
+   "max": 288.666,
+   "cv_pct": 0.23
+  },
+  {
+   "config": "stream_L3",
+   "unit": "GB/s 1t",
+   "median": 26.815,
+   "p10": 22.751,
+   "p90": 27.825,
+   "min": 22.421,
+   "max": 27.876,
+   "cv_pct": 8.653
+  },
+  {
+   "config": "stream_L3",
+   "unit": "GB/s 2t",
+   "median": 50.945,
+   "p10": 49.273,
+   "p90": 54.175,
+   "min": 47.566,
+   "max": 55.634,
+   "cv_pct": 4.17
+  },
+  {
+   "config": "stream_DRAM",
+   "unit": "GB/s 1t",
+   "median": 17.742,
+   "p10": 16.581,
+   "p90": 18.695,
+   "min": 16.153,
+   "max": 19.203,
+   "cv_pct": 5.404
+  },
+  {
+   "config": "stream_DRAM",
+   "unit": "GB/s 2t",
+   "median": 33.406,
+   "p10": 31.053,
+   "p90": 35.602,
+   "min": 29.275,
+   "max": 37.587,
+   "cv_pct": 6.434
+  }
+ ],
+ "verdict_notes": "H5 target: >= 85% of the all-thread bandwidth. Fresh 2-thread STREAM aggregate on this host today: 33.41 GB/s (p10 31.05 / p90 35.60), so the gate needs 28.39 GB/s (2.25 ns/row at q=8). Measured ols_gram_mt 2-thread: q=8 7.16 GB/s = 20.8% of the new all-thread figure (rep-spread 18.8-23.4%), q=17 6.63 GB/s = 19.5% (spread 17.2-21.8%): H5 stays RED, with error bars nowhere near 85%. Attribution: single-thread DRAM stream is only 51% of the 2-thread aggregate (time-paired median; spread 50-55%; block medians 17.74 vs 33.41 GB/s, scaling 1.88x): DRAM is NOT single-thread-saturated on this host \u2014 mt2 has real headroom, so the H5 RED is NOT excusable as a saturated memory ceiling; it is kernel-side (per-thread throughput), not ceiling-side. The decisive check: hitting 85% of 33.41 GB/s with 2 threads needs 14.20 GB/s per thread, which IS within what ONE stream thread demonstrably pulls on this host (17.74 GB/s) \u2014 i.e. the target bandwidth is physically reachable per thread; what falls short is the kernel: each mt2 thread sustains only 3.58 GB/s (20% of the 1t stream rate), an expected 4.0x shortfall, consistent with the load-port-bound analysis of ADR-0012 (2 loads + 6 broadcasts + 12 FMAs per row cannot issue enough loads to fill DRAM). mt2/mt1 efficiency is 1.90x (q=8, spread 1.73-1.98x) / 1.23x (q=17): the threading machinery itself works (q=8 scales ~1.9x), the ceiling is per-thread kernel throughput. No CFS quota exists (cpu.cfs_quota_us = -1, zero throttle events, cgroup v1 \u2014 the v2 cpu.max path does not exist), so the committed '2-vCPU quota' phrase is wrong; the honest phrasing is '2 CPUs visible to the container (cpuset 0-1), no cfs quota'. Caveat: the all-thread denominator itself is unstable on this shared host (committed 37.6 GB/s on 2026-11-20 vs 33.41 today, and 29.28-37.59 within this run) \u2014 the H5 percentage moves with the neighbor load, but no plausible denominator brings 6.6-7.2 GB/s anywhere near its 85% threshold. N is capped at 2 by the container's visible CPUs."
+}

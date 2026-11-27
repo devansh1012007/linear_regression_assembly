@@ -29,10 +29,11 @@ CPU-quota capped (~2 effective cores, throttled clock).
 > moved. The previously-unstated H2 and H6 verdicts from this same data
 > are added at the end.
 
-- **H1: RED.** OpenBLAS dsyrk wins 3 of 4 cases (2.2x at q=8 — it uses
-  the whole machine, the ladder's asm rung is single-threaded). asm-v3
-  wins exactly one: q=17, n=1e6 (DRAM-bound), +11% over numpy — the
-  regime the panel kernel was designed for.
+- **H1: RED.** OpenBLAS dsyrk wins both q=8 cases decisively (2.24x /
+  2.31x — it uses the whole machine, the ladder's asm rung is
+  single-threaded); n=2e5, q=17 is a statistical tie (asm 23.97 vs numpy
+  24.19 ns/row, -0.9%); asm-v3 wins n=1e6, q=17 (DRAM-bound), +10.9%
+  over numpy — the regime the panel kernel was designed for.
 - **G2: RED** (standing verdict; the ladder adds context, it does not
   change it).
 - Two honest surprises, both recorded in the perf log: gcc -O3 made the

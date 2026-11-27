@@ -26,6 +26,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ref"))
 import ols_bind as B
+import cli_regression
+import freestanding_check
 import ols_ref as R
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -349,6 +351,12 @@ def main():
     nist = test_nist()
     test_cross_isa()
     test_props_suite()
+    ok = cli_regression.main()
+    if ok:
+        FAILURES.append('cli_regression suite')
+    ok = freestanding_check.main()
+    if ok:
+        FAILURES.append('freestanding_check suite')
     summary = {
         "pass": not FAILURES,
         "failures": FAILURES[:50],
